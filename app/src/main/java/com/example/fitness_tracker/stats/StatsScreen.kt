@@ -350,6 +350,9 @@ private fun formatDistance(meters: Long): String =
 @Composable
 private fun PersonalRecordRow(pr: PersonalRecord) {
     val tint = com.example.fitness_tracker.ui.theme.muscleGroupColor(pr.muscleGroup)
+    val prAccent = com.example.fitness_tracker.ui.theme.featureAccent(
+        com.example.fitness_tracker.ui.theme.Feature.PR,
+    )
     val daysAgo = ((System.currentTimeMillis() - pr.performedAt) / (24L * 60 * 60 * 1000)).coerceAtLeast(0)
     val freshness = when (daysAgo) {
         0L -> "today"
@@ -383,7 +386,7 @@ private fun PersonalRecordRow(pr: PersonalRecord) {
         Text(
             text = "≈ ${formatKg(pr.estimatedOneRm)} kg",
             style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.primary,
+            color = prAccent.main,
         )
     }
 }
@@ -427,7 +430,10 @@ private fun ProgressChart(points: List<ExerciseSeriesPoint>) {
         deltaKg < 0 -> "${formatKg(deltaKg)} kg"
         else -> "no change"
     }
-    val ink = MaterialTheme.colorScheme.primary
+    val statsAccent = com.example.fitness_tracker.ui.theme.featureAccent(
+        com.example.fitness_tracker.ui.theme.Feature.STATS,
+    )
+    val ink = statsAccent.main
     val track = MaterialTheme.colorScheme.surfaceVariant
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -445,7 +451,7 @@ private fun ProgressChart(points: List<ExerciseSeriesPoint>) {
                 Text(
                     deltaText,
                     style = MaterialTheme.typography.titleSmall,
-                    color = if (deltaKg >= 0) MaterialTheme.colorScheme.primary
+                    color = if (deltaKg >= 0) statsAccent.main
                     else MaterialTheme.colorScheme.error,
                 )
             }

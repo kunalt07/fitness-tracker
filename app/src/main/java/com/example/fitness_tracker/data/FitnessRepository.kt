@@ -234,6 +234,10 @@ class FitnessRepository(
         cachedPlanDao.clearStale(keepDayKey = todayKey())
     }
 
+    suspend fun clearCachedPlan() {
+        cachedPlanDao.clearAll()
+    }
+
     private fun todayKey(): Long = System.currentTimeMillis() / (24L * 60 * 60 * 1000)
 
     private fun formatWeightGoalContext(currentKg: Double, targetKg: Double): String {

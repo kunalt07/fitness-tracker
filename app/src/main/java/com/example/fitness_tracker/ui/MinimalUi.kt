@@ -7,12 +7,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -98,10 +100,10 @@ fun PillCta(
         enabled = enabled,
         modifier = modifier
             .fillMaxWidth()
-            .height(60.dp)
+            .height(52.dp)
             .let {
                 if (elevated) it.shadow(
-                    elevation = 12.dp,
+                    elevation = 4.dp,
                     shape = RoundedCornerShape(50),
                     clip = false,
                 ) else it
@@ -112,7 +114,7 @@ fun PillCta(
             contentColor = MaterialTheme.colorScheme.onPrimary,
         ),
     ) {
-        Text(label, style = MaterialTheme.typography.titleMedium)
+        Text(label, style = MaterialTheme.typography.labelLarge)
     }
 }
 
@@ -122,10 +124,35 @@ fun BottomCtaBar(
     enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
-    // Floating CTA: inset further from the sides than the content, lifted with a
-    // shadow so it reads as hovering over the screen rather than sitting on a band.
-    Box(modifier = Modifier.padding(horizontal = 36.dp, vertical = 12.dp)) {
-        PillCta(label = label, enabled = enabled, onClick = onClick, elevated = true)
+    // Minimal floating CTA: tighter inset, flat (no shadow), thinner than before.
+    Box(modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)) {
+        PillCta(label = label, enabled = enabled, onClick = onClick, elevated = false)
+    }
+}
+
+/**
+ * Secondary pill — same height/shape as [PillCta] but outlined with a
+ * transparent fill, so it reads as quieter on a transparent backdrop.
+ */
+@Composable
+fun PillCtaSecondary(
+    label: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.height(52.dp),
+        shape = RoundedCornerShape(50),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = Color.Transparent,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+    ) {
+        Text(label, style = MaterialTheme.typography.labelLarge)
     }
 }
 

@@ -12,7 +12,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -21,7 +24,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.border
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,6 +57,7 @@ import com.example.fitness_tracker.ui.BottomCtaBar
 import com.example.fitness_tracker.ui.MinimalTextField
 import com.example.fitness_tracker.ui.PillChip
 import com.example.fitness_tracker.ui.PillCta
+import com.example.fitness_tracker.ui.PillCtaSecondary
 import com.example.fitness_tracker.ui.ScreenTitle
 import com.example.fitness_tracker.ui.MarkdownText
 import com.example.fitness_tracker.ui.QuietTextButton
@@ -61,6 +69,26 @@ import kotlinx.coroutines.launch
 
 private val GOALS = listOf("Strength", "Hypertrophy", "Cardio", "Mobility", "Fat loss")
 private val DURATIONS = listOf(15, 30, 45, 60)
+
+// Curated suggestion list — common equipment, ordered roughly by frequency of use
+// in mainstream programs. The picker filters this list as the user types, and
+// also lets them add anything they type that isn't on the list (free-form add).
+private val EQUIPMENT_SUGGESTIONS = listOf(
+    "Dumbbells", "Barbell", "Kettlebell", "Pull-up bar", "Bench", "Squat rack",
+    "Cable machine", "Resistance bands", "TRX / suspension", "Foam roller",
+    "Jump rope", "Medicine ball", "Smith machine", "EZ bar", "Trap bar",
+    "Plyo box", "Sandbag", "Battle ropes", "Rower", "Treadmill",
+    "Stationary bike", "Yoga mat", "Bodyweight only",
+)
+
+// Muscle / focus suggestions for the weekly split. Lower-case used for matching;
+// display title-cases on render. Keywords here line up with `focusKeywordColor()`
+// in Color.kt so the chosen pills get the right per-muscle accent color.
+private val MUSCLE_SUGGESTIONS = listOf(
+    "Chest", "Back", "Shoulders", "Arms", "Biceps", "Triceps",
+    "Legs", "Quads", "Hamstrings", "Glutes", "Calves",
+    "Core", "Cardio", "Mobility", "Rest",
+)
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -93,13 +121,18 @@ fun PlanScreen(
     val topInset = contentPadding.calculateTopPadding()
     val bottomInset = contentPadding.calculateBottomPadding()
 
+    // Reserve more room at the bottom in success state — the "Generate again" row
+    // adds ~50dp on top of the primary CTA, so markdown content needs that much
+    // clearance below to keep the last line scrollable above the dock.
+    val bottomReserve = 100.dp
+
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(scroll)
                 .padding(top = topInset)
-                .padding(bottom = bottomInset + 120.dp),
+                .padding(bottom = bottomInset + bottomReserve),
         ) {
             ScreenTitle("Plan a workout")
 
@@ -140,11 +173,9 @@ fun PlanScreen(
                     }
                 }
 
-                MinimalTextField(
-                    value = equipment,
-                    onValueChange = { equipment = it },
-                    label = "Equipment",
-                    placeholder = "Dumbbells, pull-up bar…",
+                EquipmentPicker(
+                    serialized = equipment,
+                    onChange = { equipment = it },
                 )
 
                 MinimalTextField(
@@ -170,55 +201,63 @@ fun PlanScreen(
                         .padding(horizontal = 24.dp)
                         .padding(top = 28.dp),
                 )
-                is UiState.Success -> Column(
-                    modifier = Modifier
-                        .padding(horizontal = 24.dp)
-                        .padding(top = 32.dp, bottom = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    SectionLabel("Your plan")
-                    MarkdownText(text = s.outputText)
+                is UiState.Success -> {
+                    val planAccent = com.example.fitness_tracker.ui.theme.featureAccent(
+                        com.example.fitness_tracker.ui.theme.Feature.PLAN,
+                    )
+                    Column(
+                        modifier = Modifier
+                            .padding(horizontal = 24.dp)
+                            .padding(top = 32.dp, bottom = 24.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Outlined.AutoAwesome,
+                                contentDescription = null,
+                                tint = planAccent.main,
+                                modifier = Modifier.size(14.dp),
+                            )
+                            Text(
+                                text = "Your plan",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = planAccent.main,
+                                modifier = Modifier.padding(start = 6.dp),
+                            )
+                        }
+                        MarkdownText(text = s.outputText)
+                    }
                 }
                 UiState.Initial -> Spacer8()
             }
         }
 
-        // Soft gradient fade above the CTA so scrolling content dissolves into the
-        // "frosted" zone instead of hitting a solid edge.
+        // Floating CTA — bare button, no card around it.
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(140.dp)
                 .padding(bottom = bottomInset)
-                .background(
-                    brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                        colors = listOf(
-                            androidx.compose.ui.graphics.Color.Transparent,
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
-                            MaterialTheme.colorScheme.surface,
-                        ),
-                    ),
-                ),
-        )
-
-        // Floating CTA — overlaid above the scrollable form. Content scrolls under it.
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = bottomInset),
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 12.dp),
         ) {
             if (uiState is UiState.Success) {
-                Column {
-                    androidx.compose.foundation.layout.Row(
+                // Two pills centered side-by-side over transparent space:
+                //   • circular icon button for regenerate
+                //   • primary "Use this plan" pill
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.End,
-                    ) {
-                        QuietTextButton(
-                            label = "Generate again",
-                            onClick = {
+                            .size(52.dp)
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outline,
+                                shape = CircleShape,
+                            )
+                            .clickable {
                                 viewModel.generatePlan(
                                     goal = goal,
                                     durationMin = duration,
@@ -227,16 +266,27 @@ fun PlanScreen(
                                     overrideFocus = selectedFocus.takeIf { it.isNotBlank() },
                                 )
                             },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Refresh,
+                            contentDescription = "Regenerate plan",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(22.dp),
                         )
                     }
-                    BottomCtaBar(
-                        label = "Use this plan",
-                        onClick = {
-                            scope.launch {
-                                if (viewModel.applyPlan() > 0) onPlanApplied()
-                            }
-                        },
-                    )
+                    Box(modifier = Modifier.padding(start = 12.dp)) {
+                        Box(modifier = Modifier.width(220.dp)) {
+                            PillCta(
+                                label = "Use this plan",
+                                onClick = {
+                                    scope.launch {
+                                        if (viewModel.applyPlan() > 0) onPlanApplied()
+                                    }
+                                },
+                            )
+                        }
+                    }
                 }
             } else {
                 val hasHistory by viewModel.hasHistory.collectAsState()
@@ -245,10 +295,10 @@ fun PlanScreen(
                         HistoryHintPill(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 24.dp, vertical = 4.dp),
+                                .padding(bottom = 10.dp),
                         )
                     }
-                    BottomCtaBar(
+                    PillCta(
                         label = if (uiState is UiState.Loading) "Generating…" else "Generate plan",
                         enabled = uiState !is UiState.Loading,
                         onClick = {
@@ -328,6 +378,9 @@ fun PlanScreen(
 
 @Composable
 private fun HistoryHintPill(modifier: Modifier = Modifier) {
+    val accent = com.example.fitness_tracker.ui.theme.featureAccent(
+        com.example.fitness_tracker.ui.theme.Feature.PLAN,
+    )
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.Start,
@@ -336,7 +389,7 @@ private fun HistoryHintPill(modifier: Modifier = Modifier) {
         Box(
             modifier = Modifier
                 .background(
-                    color = MaterialTheme.colorScheme.primaryContainer,
+                    color = accent.container,
                     shape = RoundedCornerShape(50),
                 )
                 .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -345,13 +398,13 @@ private fun HistoryHintPill(modifier: Modifier = Modifier) {
                 Icon(
                     imageVector = Icons.Outlined.AutoAwesome,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    tint = accent.onContainer,
                     modifier = Modifier.size(14.dp),
                 )
                 Text(
                     text = "Tailored to your last 2 weeks",
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    color = accent.onContainer,
                     modifier = Modifier.padding(start = 6.dp),
                 )
             }
@@ -537,10 +590,16 @@ private fun SplitEditorSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     // Local edits — start from the current split, but ensure all 7 days are present.
+    // Migrate legacy "Chest + Triceps" / "Chest & Triceps" focus strings to the
+    // new comma-separated form so the chip picker renders them as pills.
     val editing = remember(current) {
         val byDay = current.associateBy { it.dayOfWeek }
         (1..7).map { d ->
-            byDay[d] ?: WeeklySplitDay(dayOfWeek = d, focus = "")
+            val raw = byDay[d]?.focus.orEmpty()
+            val migrated = raw.replace("+", ",").replace("&", ",")
+                .split(",").map { it.trim() }.filter { it.isNotEmpty() }
+                .joinToString(", ")
+            WeeklySplitDay(dayOfWeek = d, focus = migrated)
         }.toMutableStateList()
     }
 
@@ -572,12 +631,10 @@ private fun SplitEditorSheet(
             )
             (1..7).forEach { d ->
                 val idx = d - 1
-                MinimalTextField(
-                    value = editing[idx].focus,
-                    onValueChange = { editing[idx] = editing[idx].copy(focus = it.take(40)) },
-                    label = DAY_FULL[idx],
-                    placeholder = "Chest + Triceps, Rest…",
-                    singleLine = true,
+                FocusPicker(
+                    dayLabel = DAY_FULL[idx],
+                    serialized = editing[idx].focus,
+                    onChange = { editing[idx] = editing[idx].copy(focus = it) },
                 )
             }
             Row(
@@ -593,6 +650,209 @@ private fun SplitEditorSheet(
                 )
             }
         }
+    }
+}
+
+/**
+ * Generic chip-and-suggestion picker. Free-text input with autocomplete on top of
+ * a curated list, plus selected items as removable pills. Used for both the
+ * equipment field on the Plan screen and the per-day focus fields in the weekly
+ * split editor.
+ *
+ *   serialized:    current value from parent (comma-separated string)
+ *   onChange:      called with the new serialized value
+ *   suggestions:   curated list this picker filters as the user types
+ *   sectionLabel:  optional small caps label above the pills (null = no label)
+ *   placeholder:   placeholder text for the input field
+ *   pillColor:     selected-pill color resolver — receives the label, returns a
+ *                  background color. Default = brand primaryContainer.
+ *   onPillColor:   text/icon color on the pill. Default = onPrimaryContainer.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ChipPicker(
+    serialized: String,
+    onChange: (String) -> Unit,
+    suggestions: List<String>,
+    sectionLabel: String? = null,
+    label: String,
+    placeholder: String,
+    pillColor: @Composable (String) -> androidx.compose.ui.graphics.Color = {
+        MaterialTheme.colorScheme.primaryContainer
+    },
+    onPillColor: @Composable (String) -> androidx.compose.ui.graphics.Color = {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    },
+) {
+    var query by rememberSaveable(serialized) { mutableStateOf("") }
+    val selected = remember(serialized) {
+        serialized.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+    }
+
+    fun commit(items: List<String>) {
+        val seen = mutableSetOf<String>()
+        val deduped = items.filter { seen.add(it.lowercase()) }
+        onChange(deduped.joinToString(", "))
+    }
+
+    fun add(item: String) {
+        val clean = item.trim()
+        if (clean.isEmpty()) return
+        if (selected.any { it.equals(clean, ignoreCase = true) }) { query = ""; return }
+        commit(selected + clean)
+        query = ""
+    }
+
+    fun remove(item: String) {
+        commit(selected.filterNot { it.equals(item, ignoreCase = true) })
+    }
+
+    val visibleSuggestions = remember(query, selected, suggestions) {
+        if (query.isBlank()) emptyList()
+        else suggestions
+            .filter { it.contains(query, ignoreCase = true) }
+            .filter { item -> selected.none { it.equals(item, ignoreCase = true) } }
+            .take(6)
+    }
+    val canAddCustom = query.isNotBlank() &&
+        visibleSuggestions.none { it.equals(query.trim(), ignoreCase = true) } &&
+        selected.none { it.equals(query.trim(), ignoreCase = true) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (sectionLabel != null) SectionLabel(sectionLabel)
+
+        if (selected.isNotEmpty()) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                selected.forEach { item ->
+                    SelectedPill(
+                        label = item,
+                        background = pillColor(item),
+                        ink = onPillColor(item),
+                        onRemove = { remove(item) },
+                    )
+                }
+            }
+        }
+
+        MinimalTextField(
+            value = query,
+            onValueChange = { query = it.take(40) },
+            label = label,
+            placeholder = placeholder,
+            singleLine = true,
+        )
+
+        if (visibleSuggestions.isNotEmpty() || canAddCustom) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                visibleSuggestions.forEach { s ->
+                    SuggestionChip(label = s, onTap = { add(s) })
+                }
+                if (canAddCustom) {
+                    SuggestionChip(label = "+ Add \"${query.trim()}\"", onTap = { add(query) })
+                }
+            }
+        }
+    }
+}
+
+/** Equipment picker — thin wrapper over [ChipPicker] for the Plan screen. */
+@Composable
+private fun EquipmentPicker(serialized: String, onChange: (String) -> Unit) {
+    ChipPicker(
+        serialized = serialized,
+        onChange = onChange,
+        suggestions = EQUIPMENT_SUGGESTIONS,
+        sectionLabel = "Equipment",
+        label = if (serialized.isBlank()) "Add equipment" else "Add another",
+        placeholder = "Dumbbells, pull-up bar…",
+    )
+}
+
+/**
+ * Focus picker for one day in the weekly split. Same UX as [EquipmentPicker]
+ * but draws each pill in the muscle-group accent color so the user sees, e.g.,
+ * "Chest" in red and "Back" in blue immediately after tapping.
+ */
+@Composable
+private fun FocusPicker(
+    dayLabel: String,
+    serialized: String,
+    onChange: (String) -> Unit,
+) {
+    ChipPicker(
+        serialized = serialized,
+        onChange = onChange,
+        suggestions = MUSCLE_SUGGESTIONS,
+        sectionLabel = dayLabel,
+        label = "Add focus",
+        placeholder = "Chest, Triceps, Rest…",
+        pillColor = { item ->
+            // Lighten the muscle's main color into a subtle background tint.
+            com.example.fitness_tracker.ui.theme.focusKeywordColor(item)
+                ?.copy(alpha = 0.18f)
+                ?: MaterialTheme.colorScheme.primaryContainer
+        },
+        onPillColor = { item ->
+            com.example.fitness_tracker.ui.theme.focusKeywordColor(item)
+                ?: MaterialTheme.colorScheme.onPrimaryContainer
+        },
+    )
+}
+
+@Composable
+private fun SelectedPill(
+    label: String,
+    background: androidx.compose.ui.graphics.Color,
+    ink: androidx.compose.ui.graphics.Color,
+    onRemove: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .background(color = background, shape = RoundedCornerShape(50))
+            .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = ink,
+        )
+        IconButton(
+            onClick = onRemove,
+            modifier = Modifier.size(28.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Close,
+                contentDescription = "Remove $label",
+                tint = ink,
+                modifier = Modifier.size(16.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SuggestionChip(label: String, onTap: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clickable { onTap() }
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(50),
+            )
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 

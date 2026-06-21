@@ -84,12 +84,32 @@ internal fun DietScreen(
             .padding(top = topInset)
             .padding(bottom = bottomInset),
     ) {
-        // Title row + cog
+        // Title row + cog. "Diet Plan" sits up top; "Menu" is a smaller-but-same-
+        // family subheading directly underneath.
         Row(
             modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(modifier = Modifier.weight(1f)) { ScreenTitle("Menu") }
+            Box(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .padding(top = 32.dp, bottom = 24.dp),
+                ) {
+                    Text(
+                        text = "Diet Plan",
+                        style = MaterialTheme.typography.displayMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "Menu",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
             IconButton(onClick = { showGoalSheet = true }) {
                 Icon(
                     Icons.Outlined.Settings,
@@ -99,21 +119,16 @@ internal fun DietScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
-
-        // Diet type picker
-        Box(modifier = Modifier.padding(horizontal = 24.dp)) {
-            SectionLabel("I eat")
-        }
-        Spacer(modifier = Modifier.height(8.dp))
+        // Diet type picker — each option carries a recognisable color:
+        //   Veg = green dot, Non-veg = red dot, Vegan = leaf green, Eggetarian = amber.
         LazyRow(
             contentPadding = PaddingValues(horizontal = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(DietType.entries.toList()) { type ->
-                PillChip(
+                DietTypeChip(
+                    type = type,
                     selected = pref?.type == type,
-                    label = type.label,
                     onClick = { viewModel.setDietPreference(type) },
                 )
             }
@@ -147,6 +162,11 @@ internal fun DietScreen(
             Spacer(modifier = Modifier.height(20.dp))
         }
 
+        // Page-wide accent follows whichever diet type is selected. Veg → green,
+        // Non-veg → red, Vegan → emerald, Eggetarian → amber. Falls back to the
+        // default Diet accent (amber) before any preference is chosen.
+        val pageAccent = activeDietColors(pref)
+
         // One row per category
         MealCategory.entries.forEach { category ->
             val rowMeals = meals.filter { it.category == category }
@@ -156,6 +176,7 @@ internal fun DietScreen(
                 category = category,
                 isLoading = (suggest as? DietViewModel.SuggestState.Loading)?.category == category,
                 onSuggestMore = { viewModel.suggestMore(category) },
+                accent = pageAccent,
                 modifier = Modifier.padding(horizontal = 24.dp),
             )
             Spacer(modifier = Modifier.height(10.dp))
@@ -164,7 +185,7 @@ internal fun DietScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 items(rowMeals, key = { it.id }) { m ->
-                    MealCard(meal = m, onTap = { openMealId = m.id })
+                    MealCard(meal = m, accent = pageAccent, onTap = { openMealId = m.id })
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))
@@ -225,11 +246,99 @@ internal fun DietScreen(
     }
 }
 
+/**
+ * Color tokens for each [DietType]. Choices follow the Indian veg/non-veg dot
+ * convention so the affordance reads instantly.
+ *
+ *   main        — solid accent (selected chip fill, kcal text, AI sparkle)
+ *   container   — translucent tint of main (Suggest-more pill background)
+ *   onContainer — ink for content sitting on `container`
+ */
+private data class DietTypeColors(
+    val main: androidx.compose.ui.graphics.Color,
+    val container: androidx.compose.ui.graphics.Color,
+    val onContainer: androidx.compose.ui.graphics.Color,
+)
+
+@Composable
+private fun dietTypeColors(type: DietType): DietTypeColors {
+    val main = when (type) {
+        DietType.VEG        -> androidx.compose.ui.graphics.Color(0xFF1F8A4C) // green
+        DietType.NON_VEG    -> androidx.compose.ui.graphics.Color(0xFFD04A3A) // red
+        DietType.VEGAN      -> androidx.compose.ui.graphics.Color(0xFF14A37F) // leaf / emerald
+        DietType.EGGETARIAN -> androidx.compose.ui.graphics.Color(0xFFE0A82E) // egg yolk amber
+    }
+    return DietTypeColors(
+        main = main,
+        container = main.copy(alpha = 0.16f),
+        onContainer = main,
+    )
+}
+
+/**
+ * The "current" diet color for screen-wide accents (CategoryHeader,
+ * MealCard kcal text, AI sparkle, etc.). Falls back to the Diet feature
+ * accent (amber) when no preference has been chosen yet.
+ */
+@Composable
+private fun activeDietColors(pref: com.example.fitness_tracker.data.DietPreference?): DietTypeColors {
+    if (pref != null) return dietTypeColors(pref.type)
+    val fallback = com.example.fitness_tracker.ui.theme.featureAccent(
+        com.example.fitness_tracker.ui.theme.Feature.DIET,
+    )
+    return DietTypeColors(
+        main = fallback.main,
+        container = fallback.container,
+        onContainer = fallback.onContainer,
+    )
+}
+
+/**
+ * One chip for a [DietType]. When selected, the chip fills with the type's color
+ * and shows white text. When unselected, it stays neutral but carries a small
+ * colored dot so the user can still tell options apart at a glance.
+ */
+@Composable
+private fun DietTypeChip(
+    type: DietType,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = dietTypeColors(type)
+    val container = if (selected) colors.main else MaterialTheme.colorScheme.surfaceVariant
+    val ink = if (selected) androidx.compose.ui.graphics.Color.White
+    else MaterialTheme.colorScheme.onSurface
+
+    Row(
+        modifier = Modifier
+            .background(color = container, shape = RoundedCornerShape(50))
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Leading dot — visible only when unselected (when selected, the whole pill IS the color).
+        if (!selected) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(color = colors.main, shape = RoundedCornerShape(50)),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+        Text(
+            text = type.label,
+            style = MaterialTheme.typography.labelLarge,
+            color = ink,
+        )
+    }
+}
+
 @Composable
 private fun CategoryHeader(
     category: MealCategory,
     isLoading: Boolean,
     onSuggestMore: () -> Unit,
+    accent: DietTypeColors,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -246,14 +355,14 @@ private fun CategoryHeader(
             CircularProgressIndicator(
                 modifier = Modifier.size(18.dp),
                 strokeWidth = 2.dp,
-                color = MaterialTheme.colorScheme.primary,
+                color = accent.main,
             )
         } else {
             Row(
                 modifier = Modifier
                     .clickable { onSuggestMore() }
                     .background(
-                        color = MaterialTheme.colorScheme.primaryContainer,
+                        color = accent.container,
                         shape = RoundedCornerShape(50),
                     )
                     .padding(horizontal = 10.dp, vertical = 6.dp),
@@ -262,13 +371,13 @@ private fun CategoryHeader(
                 Icon(
                     imageVector = Icons.Filled.AutoAwesome,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    tint = accent.onContainer,
                     modifier = Modifier.size(14.dp),
                 )
                 Text(
                     text = "Suggest more",
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    color = accent.onContainer,
                     modifier = Modifier.padding(start = 4.dp),
                 )
             }
@@ -277,7 +386,11 @@ private fun CategoryHeader(
 }
 
 @Composable
-private fun MealCard(meal: Meal, onTap: () -> Unit) {
+private fun MealCard(
+    meal: Meal,
+    accent: DietTypeColors,
+    onTap: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .width(220.dp)
@@ -305,7 +418,7 @@ private fun MealCard(meal: Meal, onTap: () -> Unit) {
                 Icon(
                     imageVector = Icons.Filled.AutoAwesome,
                     contentDescription = "AI suggestion",
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = accent.main,
                     modifier = Modifier.size(14.dp),
                 )
             }
@@ -324,7 +437,7 @@ private fun MealCard(meal: Meal, onTap: () -> Unit) {
             Text(
                 text = "${meal.calories} kcal",
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
+                color = accent.main,
             )
             Text(
                 text = "${meal.proteinG}g P",
