@@ -8,3 +8,8 @@ build/
 .externalNativeBuild
 .cxx
 
+# Signing — must never be committed
+*.jks
+*.keystore
+keystore.properties
+
