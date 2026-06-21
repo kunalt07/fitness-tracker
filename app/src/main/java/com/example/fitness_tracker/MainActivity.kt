@@ -1,0 +1,37 @@
+package com.example.fitness_tracker
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.fitness_tracker.auth.AuthViewModel
+import com.example.fitness_tracker.auth.WelcomeScreen
+import com.example.fitness_tracker.ui.theme.FitnessTrackerTheme
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            FitnessTrackerTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                ) {
+                    val authViewModel: AuthViewModel = viewModel()
+                    val profile by authViewModel.profile.collectAsState()
+                    if (profile == null) {
+                        WelcomeScreen(viewModel = authViewModel)
+                    } else {
+                        FitnessApp()
+                    }
+                }
+            }
+        }
+    }
+}

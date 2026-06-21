@@ -1,0 +1,13 @@
+*.iml
+.gradle/
+.idea/
+.DS_Store
+local.properties
+build/
+/captures
+.externalNativeBuild
+.cxx
+
+# Firebase config — each developer drops in their own google-services.json
+# (see README for setup). API key is scoped per-app, but cleaner to keep out of repo.
+app/google-services.json
