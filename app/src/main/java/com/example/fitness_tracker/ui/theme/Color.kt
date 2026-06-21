@@ -7,10 +7,14 @@ import androidx.compose.ui.graphics.Color
 // Decorative color appears only via the muscle-group palette.
 
 // Light scheme
-val Primary = Color(0xFF1F8A4C)              // brand green
+val Primary = Color(0xFF1F8A4C)              // brand green (CTAs only)
 val OnPrimary = Color(0xFFFFFFFF)
-val PrimaryContainer = Color(0xFFD7F1E1)
-val OnPrimaryContainer = Color(0xFF06321A)
+// `primaryContainer` is intentionally NOT a green tint. Many surfaces in M3
+// (selected tiles, today-pill, time picker, avatar bg, etc.) read this token —
+// keeping it green would paint the whole app pale mint. We use a neutral gray
+// here so brand green appears only on actual primary actions.
+val PrimaryContainer = Color(0xFFEDEDED)
+val OnPrimaryContainer = Color(0xFF111111)
 
 val Secondary = Color(0xFF4A4A4A)
 val OnSecondary = Color(0xFFFFFFFF)
@@ -38,8 +42,9 @@ val Outline = Color(0xFFBFBFBF)
 // Dark scheme
 val PrimaryDark = Color(0xFF7BD7A2)           // brand green, lifted for dark
 val OnPrimaryDark = Color(0xFF003918)
-val PrimaryContainerDark = Color(0xFF0F5731)
-val OnPrimaryContainerDark = Color(0xFFC6F1D6)
+// Neutralized — see light-scheme comment above.
+val PrimaryContainerDark = Color(0xFF262626)
+val OnPrimaryContainerDark = Color(0xFFEDEDED)
 
 val SecondaryDark = Color(0xFFBFBFBF)
 val OnSecondaryDark = Color(0xFF1A1A1A)
@@ -63,6 +68,89 @@ val OnSurfaceDark = Color(0xFFECECEC)
 val SurfaceVariantDark = Color(0xFF1F1F1F)
 val OnSurfaceVariantDark = Color(0xFFB5B5B5)
 val OutlineDark = Color(0xFF555555)
+
+// --- Per-feature accents ---
+// Each tab carries one signature color so the user can identify a screen at a
+// glance. Brand green stays reserved for primary CTAs and the nav-bar pill.
+//
+// Picks are based on category convention:
+//   • Plan → indigo: ChatGPT / Linear / Notion-AI use violet for AI output
+//   • Diet → amber:  MyFitnessPal / Yuka / Cronometer all warm-color food
+//   • Stats → steel blue: Whoop / Apple Health / GitHub Insights use cool tones
+//     for analytics surfaces
+//
+// Each has a light (`AccentX`) and dark (`AccentXDark`) variant tuned for
+// AA-contrast against the surface in their respective scheme.
+
+val AccentPlan = Color(0xFF6E56CF)            // indigo (AI / generated content)
+val AccentPlanDark = Color(0xFFA89BF0)
+val AccentPlanContainer = Color(0xFFE9E4FA)
+val AccentPlanContainerDark = Color(0xFF2E2552)
+val OnAccentPlanContainer = Color(0xFF1F1A4A)
+val OnAccentPlanContainerDark = Color(0xFFE9E4FA)
+
+val AccentDiet = Color(0xFFE89B3D)            // amber (food / nutrition)
+val AccentDietDark = Color(0xFFF4B870)
+val AccentDietContainer = Color(0xFFFCEAD0)
+val AccentDietContainerDark = Color(0xFF513413)
+val OnAccentDietContainer = Color(0xFF4A2E08)
+val OnAccentDietContainerDark = Color(0xFFFCEAD0)
+
+val AccentStats = Color(0xFF4A6FA5)           // steel blue (analytics)
+val AccentStatsDark = Color(0xFF7FA0CF)
+val AccentStatsContainer = Color(0xFFD9E3F4)
+val AccentStatsContainerDark = Color(0xFF24365A)
+val OnAccentStatsContainer = Color(0xFF11253F)
+val OnAccentStatsContainerDark = Color(0xFFD9E3F4)
+
+// Special-purpose accents (cross-cutting state, used sparingly).
+val AccentPr = Color(0xFFD9A341)              // gold (personal records)
+val AccentPrDark = Color(0xFFE6C063)
+val AccentStreak = Color(0xFFE76F51)          // coral (streak indicator)
+val AccentStreakDark = Color(0xFFF09279)
+
+// Resolve the right accent for the current Material theme.
+// Caller does: val planAccent = featureAccent(Feature.PLAN)
+//
+// Note: Compose's `isSystemInDarkTheme()` is the right call site, but we need
+// MaterialTheme context to be resolved. The composable wrapper below makes
+// that ergonomic.
+
+enum class Feature { PLAN, DIET, STATS, PR, STREAK }
+
+data class FeatureAccent(val main: Color, val container: Color, val onContainer: Color)
+
+@androidx.compose.runtime.Composable
+fun featureAccent(feature: Feature): FeatureAccent {
+    val dark = androidx.compose.foundation.isSystemInDarkTheme()
+    return when (feature) {
+        Feature.PLAN -> FeatureAccent(
+            main = if (dark) AccentPlanDark else AccentPlan,
+            container = if (dark) AccentPlanContainerDark else AccentPlanContainer,
+            onContainer = if (dark) OnAccentPlanContainerDark else OnAccentPlanContainer,
+        )
+        Feature.DIET -> FeatureAccent(
+            main = if (dark) AccentDietDark else AccentDiet,
+            container = if (dark) AccentDietContainerDark else AccentDietContainer,
+            onContainer = if (dark) OnAccentDietContainerDark else OnAccentDietContainer,
+        )
+        Feature.STATS -> FeatureAccent(
+            main = if (dark) AccentStatsDark else AccentStats,
+            container = if (dark) AccentStatsContainerDark else AccentStatsContainer,
+            onContainer = if (dark) OnAccentStatsContainerDark else OnAccentStatsContainer,
+        )
+        Feature.PR -> FeatureAccent(
+            main = if (dark) AccentPrDark else AccentPr,
+            container = if (dark) AccentPrDark.copy(alpha = 0.18f) else AccentPr.copy(alpha = 0.18f),
+            onContainer = if (dark) AccentPrDark else AccentPr,
+        )
+        Feature.STREAK -> FeatureAccent(
+            main = if (dark) AccentStreakDark else AccentStreak,
+            container = if (dark) AccentStreakDark.copy(alpha = 0.18f) else AccentStreak.copy(alpha = 0.18f),
+            onContainer = if (dark) AccentStreakDark else AccentStreak,
+        )
+    }
+}
 
 // --- Muscle-group palette ---
 // Stable mapping: each canonical group gets a recognizable hue. Unknown groups

@@ -43,7 +43,7 @@ class ReminderReceiver : BroadcastReceiver() {
     private fun postNotification(context: Context, focus: String?) {
         FitnessApplication.ensureReminderChannel(context)
         val title = "Time to train"
-        val text = if (focus.isNullOrBlank()) "Open Fitness Tracker to start logging."
+        val text = if (focus.isNullOrBlank()) "Open Vector to start logging."
         else "Today: $focus. Tap to open the plan."
 
         val openAppIntent = Intent(context, MainActivity::class.java).apply {

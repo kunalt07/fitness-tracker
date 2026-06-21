@@ -1,8 +1,10 @@
-# Fitness Tracker
+# Vector
 
 A local-first Android fitness app with AI coaching, built in Kotlin + Jetpack Compose.
 
 Track workouts, log meals, measure progress, and let Gemini generate workout plans and meal suggestions tailored to your data — all running on-device with a single sign-in-free Room database.
+
+The name reflects what fitness tracking actually is — direction (cut / bulk / maintain) plus magnitude (sets, weight, calories).
 
 ## What's in it
 

@@ -57,27 +57,11 @@ class PlanViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             _hasHistory.value = repo.summarizeRecentHistory() != null
         }
+        // Wipe any previously-cached plan so the AI result doesn't reappear after
+        // the app is closed and reopened. The Plan tab now always starts blank;
+        // the user explicitly taps "Generate plan" to produce a fresh one.
         viewModelScope.launch {
-            repo.pruneStaleCachedPlan()
-            val cached = repo.cachedPlanForToday()
-            if (cached != null) {
-                _uiState.value = UiState.Success(cached.markdown)
-                return@launch
-            }
-            // No cache yet. Once the split has loaded, if today has a focus,
-            // generate a plan silently with sensible defaults.
-            val split = repo.weeklySplit.first()
-            val focusToday = split.firstOrNull { it.dayOfWeek == todayDayOfWeek() }
-                ?.focus?.takeIf { it.isNotBlank() }
-            if (focusToday != null) {
-                generatePlan(
-                    goal = "Hypertrophy",
-                    durationMin = 30,
-                    equipment = "",
-                    notes = "",
-                    overrideFocus = focusToday,
-                )
-            }
+            repo.clearCachedPlan()
         }
     }
 
@@ -150,8 +134,9 @@ class PlanViewModel(app: Application) : AndroidViewModel(app) {
                 val response = generativeModel.generateContent(content { text(prompt) })
                 val text = response.text
                 if (text != null) {
+                    // Plan results live in memory only — by design, they're discarded
+                    // when the app is closed so the user always starts from a blank tab.
                     _uiState.value = UiState.Success(text)
-                    repo.cachePlan(focus = focus.orEmpty(), markdown = text)
                 } else {
                     _uiState.value = UiState.Error("Empty response from AI.")
                 }

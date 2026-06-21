@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -31,10 +32,10 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.outlined.BarChart
-import androidx.compose.material.icons.outlined.FitnessCenter
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Restaurant
+import androidx.compose.material.icons.rounded.FitnessCenter
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -103,7 +104,9 @@ internal enum class TopLevelDest(
 ) {
     Home("home", "Home", Icons.Filled.Home, Icons.Outlined.Home),
     Plan("plan", "Plan", Icons.Filled.Lightbulb, Icons.Outlined.Lightbulb),
-    Log("log", "Log", Icons.Filled.FitnessCenter, Icons.Outlined.FitnessCenter),
+    // M3 rounded variant — solid filled dumbbell, both states use it
+    // (selected stays solid; unselected just changes tint).
+    Log("log", "Log", Icons.Rounded.FitnessCenter, Icons.Rounded.FitnessCenter),
     Diet("diet", "Diet", Icons.Filled.Restaurant, Icons.Outlined.Restaurant),
     Stats("stats", "Stats", Icons.Filled.BarChart, Icons.Outlined.BarChart),
 }
