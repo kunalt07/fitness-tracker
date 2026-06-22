@@ -500,6 +500,30 @@ interface AggregateDao {
         """
     )
     suspend fun seriesForExercise(exerciseId: Long): List<ExerciseSeriesPoint>
+
+    /**
+     * IDs of the best-1RM set for each exercise — same Epley ranking as
+     * [personalRecords] but returns just the set_entries.id so the Log row
+     * renderer can flag PRs inline. Reactive: re-emits whenever a new set
+     * is logged that beats the current PR for that exercise.
+     */
+    @Query(
+        """
+        SELECT t.id AS id
+        FROM (
+            SELECT s.id AS id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY s.exerciseId
+                       ORDER BY s.weightKg * (1.0 + s.reps / 30.0) DESC, s.performedAt DESC
+                   ) AS rk
+            FROM set_entries s
+            INNER JOIN exercises e ON e.id = s.exerciseId
+            WHERE s.weightKg > 0 AND s.reps > 0 AND e.kind = 'REPS'
+        ) t
+        WHERE t.rk = 1
+        """
+    )
+    fun observePrSetIds(): Flow<List<Long>>
 }
 
 data class SetWithExerciseRow(

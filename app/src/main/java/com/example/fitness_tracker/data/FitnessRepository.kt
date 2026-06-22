@@ -492,6 +492,9 @@ class FitnessRepository(
     suspend fun personalRecords(limit: Int = 5): List<PersonalRecord> =
         aggregateDao.personalRecords(limit)
 
+    /** IDs of best-1RM sets per exercise. Reactive — flips on new PRs. */
+    val prSetIds: Flow<List<Long>> = aggregateDao.observePrSetIds()
+
     suspend fun seriesForExercise(exerciseId: Long): List<ExerciseSeriesPoint> =
         aggregateDao.seriesForExercise(exerciseId)
 
