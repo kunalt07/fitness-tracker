@@ -13,7 +13,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,7 +31,7 @@ fun EditExerciseSheet(
     onSave: (name: String, muscleGroup: String, kind: ExerciseKind) -> Unit,
     onDelete: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberFullSheetState()
     var name by rememberSaveable(initial.id) { mutableStateOf(initial.name) }
     var muscleGroup by rememberSaveable(initial.id) { mutableStateOf(initial.muscleGroup) }
     var kind by rememberSaveable(initial.id) { mutableStateOf(initial.kind) }

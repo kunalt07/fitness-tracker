@@ -36,7 +36,7 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
+import com.example.fitness_tracker.ui.rememberFullSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -588,7 +588,7 @@ private fun SplitEditorSheet(
     onSave: (List<WeeklySplitDay>) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberFullSheetState()
     // Local edits — start from the current split, but ensure all 7 days are present.
     // Migrate legacy "Chest + Triceps" / "Chest & Triceps" focus strings to the
     // new comma-separated form so the chip picker renders them as pills.

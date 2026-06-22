@@ -19,7 +19,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
+import com.example.fitness_tracker.ui.rememberFullSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,7 +43,7 @@ fun BodyWeightSheet(
     onDismiss: () -> Unit,
     onSave: (currentKg: Double, targetKg: Double?) -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberFullSheetState()
     var current by rememberSaveable {
         mutableStateOf(initialKg?.let { formatWeight(it) } ?: "")
     }
@@ -135,7 +135,7 @@ fun ReadinessSheet(
     onDismiss: () -> Unit,
     onSave: (Readiness) -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberFullSheetState()
     var selected by rememberSaveable { mutableStateOf(initial?.name) }
 
     ModalBottomSheet(
