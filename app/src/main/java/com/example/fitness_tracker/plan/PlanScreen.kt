@@ -257,9 +257,8 @@ fun PlanScreen(
                     Box(
                         modifier = Modifier
                             .size(52.dp)
-                            .border(
-                                width = 1.dp,
-                                color = MaterialTheme.colorScheme.outline,
+                            .background(
+                                color = MaterialTheme.colorScheme.primary,
                                 shape = CircleShape,
                             )
                             .clickable {
@@ -276,7 +275,7 @@ fun PlanScreen(
                         Icon(
                             imageVector = Icons.Outlined.Refresh,
                             contentDescription = "Regenerate plan",
-                            tint = MaterialTheme.colorScheme.onSurface,
+                            tint = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(22.dp),
                         )
                     }
