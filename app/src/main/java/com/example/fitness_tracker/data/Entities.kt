@@ -5,9 +5,12 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import kotlinx.serialization.Serializable
 
+@Serializable
 enum class ExerciseKind { REPS, TIME, DISTANCE }
 
+@Serializable
 @Entity(tableName = "exercises")
 data class Exercise(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -16,6 +19,7 @@ data class Exercise(
     @ColumnInfo(defaultValue = "REPS") val kind: ExerciseKind = ExerciseKind.REPS,
 )
 
+@Serializable
 @Entity(tableName = "workout_sessions")
 data class WorkoutSession(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -36,6 +40,7 @@ data class WorkoutSession(
     ],
     indices = [Index("exerciseId")],
 )
+@Serializable
 data class PendingPlanItem(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val exerciseId: Long,
@@ -44,8 +49,10 @@ data class PendingPlanItem(
     val dayKey: Long,
 )
 
+@Serializable
 enum class Readiness { TIRED, OK, STRONG }
 
+@Serializable
 @Entity(tableName = "body_weight_entry")
 data class BodyWeightEntry(
     @PrimaryKey val dayKey: Long,
@@ -53,6 +60,7 @@ data class BodyWeightEntry(
     val performedAt: Long,
 )
 
+@Serializable
 @Entity(tableName = "food_entry")
 data class FoodEntry(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -65,9 +73,13 @@ data class FoodEntry(
     val loggedAt: Long,
 )
 
+@Serializable
 enum class DietType { VEG, NON_VEG, VEGAN, EGGETARIAN }
+
+@Serializable
 enum class MealCategory { BREAKFAST, LUNCH, DINNER, SNACK, HIGH_PROTEIN }
 
+@Serializable
 @Entity(tableName = "meal")
 data class Meal(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -89,6 +101,7 @@ data class Meal(
     val createdAt: Long = 0,
 )
 
+@Serializable
 @Entity(tableName = "diet_preference")
 data class DietPreference(
     /** Single-row table; always id=0. */
@@ -96,6 +109,7 @@ data class DietPreference(
     val type: DietType,
 )
 
+@Serializable
 @Entity(tableName = "cached_diet_plan")
 data class CachedDietPlan(
     @PrimaryKey val dayKey: Long,
@@ -104,6 +118,7 @@ data class CachedDietPlan(
     val createdAt: Long,
 )
 
+@Serializable
 @Entity(tableName = "calorie_goal")
 data class CalorieGoal(
     /** Single-row table; always id=0. */
@@ -113,6 +128,7 @@ data class CalorieGoal(
     val updatedAt: Long,
 )
 
+@Serializable
 @Entity(tableName = "weight_goal")
 data class WeightGoal(
     /** Single-row table; always id=0. */
@@ -121,6 +137,7 @@ data class WeightGoal(
     val updatedAt: Long,
 )
 
+@Serializable
 @Entity(tableName = "readiness_entry")
 data class ReadinessEntry(
     @PrimaryKey val dayKey: Long,
@@ -128,12 +145,14 @@ data class ReadinessEntry(
     val performedAt: Long,
 )
 
+@Serializable
 @Entity(tableName = "water_entry")
 data class WaterEntry(
     @PrimaryKey val dayKey: Long,
     val glasses: Int,
 )
 
+@Serializable
 @Entity(tableName = "user_profile")
 data class UserProfile(
     /** Single-row table; always id=0. */
@@ -143,6 +162,7 @@ data class UserProfile(
     val createdAt: Long,
 )
 
+@Serializable
 @Entity(tableName = "reminder_settings")
 data class ReminderSettings(
     /** Single-row table; always id=0. */
@@ -154,6 +174,7 @@ data class ReminderSettings(
     val minute: Int,
 )
 
+@Serializable
 @Entity(tableName = "cached_plan")
 data class CachedPlan(
     @PrimaryKey val dayKey: Long,
@@ -162,6 +183,7 @@ data class CachedPlan(
     val createdAt: Long,
 )
 
+@Serializable
 @Entity(tableName = "weekly_split")
 data class WeeklySplitDay(
     /** Calendar.DAY_OF_WEEK: 1 = Sunday … 7 = Saturday. */
@@ -170,6 +192,7 @@ data class WeeklySplitDay(
     val focus: String,
 )
 
+@Serializable
 @Entity(tableName = "workout_templates")
 data class WorkoutTemplate(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -196,6 +219,7 @@ data class WorkoutTemplate(
     ],
     indices = [Index("exerciseId")],
 )
+@Serializable
 data class TemplateExercise(
     val templateId: Long,
     val exerciseId: Long,
@@ -220,6 +244,7 @@ data class TemplateExercise(
     ],
     indices = [Index("sessionId"), Index("exerciseId")],
 )
+@Serializable
 data class SetEntry(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val sessionId: Long,

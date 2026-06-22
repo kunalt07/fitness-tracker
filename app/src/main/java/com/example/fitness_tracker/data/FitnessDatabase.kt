@@ -71,6 +71,7 @@ abstract class FitnessDatabase : RoomDatabase() {
     abstract fun cachedDietPlanDao(): CachedDietPlanDao
     abstract fun mealDao(): MealDao
     abstract fun dietPreferenceDao(): DietPreferenceDao
+    abstract fun backupDao(): BackupDao
 
     companion object {
         @Volatile private var instance: FitnessDatabase? = null
