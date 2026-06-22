@@ -12,6 +12,8 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.fitness_tracker.auth.AuthViewModel
 import com.example.fitness_tracker.auth.WelcomeScreen
+import com.example.fitness_tracker.onboarding.OnboardingFlow
+import com.example.fitness_tracker.onboarding.OnboardingStore
 import com.example.fitness_tracker.ui.theme.FitnessTrackerTheme
 import com.example.fitness_tracker.ui.theme.ThemeModeStore
 import com.example.fitness_tracker.ui.theme.resolveDarkTheme
@@ -31,10 +33,14 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val authViewModel: AuthViewModel = viewModel()
                     val profile by authViewModel.profile.collectAsState()
-                    if (profile == null) {
-                        WelcomeScreen(viewModel = authViewModel)
-                    } else {
-                        FitnessApp()
+                    val onboardingStore = OnboardingStore.get(applicationContext)
+                    val onboardingComplete by onboardingStore.complete.collectAsState()
+                    when {
+                        profile == null -> WelcomeScreen(viewModel = authViewModel)
+                        !onboardingComplete -> OnboardingFlow(
+                            onFinish = { onboardingStore.markComplete() },
+                        )
+                        else -> FitnessApp()
                     }
                 }
             }
