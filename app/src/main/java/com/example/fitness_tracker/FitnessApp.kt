@@ -1,8 +1,9 @@
 package com.example.fitness_tracker
 
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -222,12 +223,10 @@ private fun FloatingNavBar(
     }.let { if (it < 0) 0 else it }
 
     // Animated float so the pill slides smoothly when selection changes.
+    // Tween (not spring) keeps the slide steady — no overshoot, no whip.
     val animatedIndex by animateFloatAsState(
         targetValue = selectedIndex.toFloat(),
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMediumLow,
-        ),
+        animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing),
         label = "nav-pill-position",
     )
 
@@ -301,13 +300,19 @@ private fun FloatingNavBar(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     entries.forEachIndexed { index, dest ->
+                        // No ripple — tap should leave the pill clean. The
+                        // sliding selection background is the only feedback.
+                        val tapSource = remember { MutableInteractionSource() }
                         NavPill(
                             dest = dest,
                             selected = index == selectedIndex,
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .clickable {
+                                .clickable(
+                                    interactionSource = tapSource,
+                                    indication = null,
+                                ) {
                                     if (index != selectedIndex) onNavigate(dest)
                                 },
                         )
