@@ -23,6 +23,8 @@ import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.CalendarToday
+import androidx.compose.material.icons.outlined.CloudDownload
+import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material3.AlertDialog
@@ -45,14 +47,26 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.example.fitness_tracker.LocalSnackbarHost
 import com.example.fitness_tracker.auth.AuthViewModel
+import com.example.fitness_tracker.backup.BackupRepository
+import com.example.fitness_tracker.backup.BackupResult
 import com.example.fitness_tracker.log.LogViewModel
 import com.example.fitness_tracker.plan.PlanViewModel
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import com.example.fitness_tracker.ui.MinimalTextField
 import com.example.fitness_tracker.ui.PillCta
 import com.example.fitness_tracker.ui.theme.ThemeMode
 import com.example.fitness_tracker.ui.theme.ThemeModeStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun ProfileScreen(
@@ -72,20 +86,51 @@ fun ProfileScreen(
     var confirmingClear by remember { mutableStateOf(false) }
     var editingProfile by remember { mutableStateOf(false) }
     var themePicker by remember { mutableStateOf(false) }
+    var confirmingRestore by remember { mutableStateOf<android.net.Uri?>(null) }
 
     val context = LocalContext.current
     val themeStore = remember(context) { ThemeModeStore.get(context) }
     val themeMode by themeStore.mode.collectAsState()
+    val backupRepo = remember(context) { BackupRepository.get(context) }
+    val snackbarHost = LocalSnackbarHost.current
+    val scope = rememberCoroutineScope()
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val payload = backupRepo.export()
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openOutputStream(uri)?.use {
+                        it.write(payload.toByteArray(Charsets.UTF_8))
+                    } ?: error("Couldn't open file for writing")
+                }.isSuccess
+            }
+            snackbarHost.showSnackbar(
+                if (ok) "Backup saved" else "Couldn't save backup"
+            )
+        }
+    }
+
+    val restorePickLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        confirmingRestore = uri
+    }
 
     val scroll = rememberScrollState()
-    val topInset = contentPadding.calculateTopPadding()
+    // FitnessApp's Scaffold Box already pads the NavHost by scaffoldPadding,
+    // so we only consume the bottom inset here — re-applying the top inset
+    // double-pads and leaves a visible gap above the back-arrow toolbar row.
     val bottomInset = contentPadding.calculateBottomPadding()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(scroll)
-            .padding(top = topInset)
             .padding(bottom = bottomInset),
     ) {
         // Top bar with back button and title.
@@ -208,6 +253,30 @@ fun ProfileScreen(
 
         Spacer(modifier = Modifier.height(28.dp))
 
+        // Data section — backup/restore. Local-first means a phone wipe loses
+        // everything; this is the user's safety net.
+        SectionLabel("Data", modifier = Modifier.padding(horizontal = 24.dp))
+        Spacer(modifier = Modifier.height(8.dp))
+
+        SettingsRow(
+            icon = Icons.Outlined.CloudUpload,
+            title = "Export data",
+            subtitle = "Save a JSON backup of everything",
+            onClick = { exportLauncher.launch(defaultBackupFileName()) },
+        )
+        HorizontalDivider(
+            modifier = Modifier.padding(start = 56.dp),
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
+        SettingsRow(
+            icon = Icons.Outlined.CloudDownload,
+            title = "Restore from backup",
+            subtitle = "Replaces everything with a saved JSON file",
+            onClick = { restorePickLauncher.launch(arrayOf("application/json", "*/*")) },
+        )
+
+        Spacer(modifier = Modifier.height(28.dp))
+
         SettingsRow(
             icon = Icons.AutoMirrored.Outlined.Logout,
             title = "Clear profile",
@@ -242,6 +311,52 @@ fun ProfileScreen(
                 Text(
                     "Your name and email will be reset. " +
                         "All workouts, sessions, and stats stay intact.",
+                )
+            },
+        )
+    }
+
+    confirmingRestore?.let { uri ->
+        AlertDialog(
+            onDismissRequest = { confirmingRestore = null },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmingRestore = null
+                        scope.launch {
+                            val text = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    context.contentResolver.openInputStream(uri)
+                                        ?.bufferedReader(Charsets.UTF_8)
+                                        ?.use { it.readText() }
+                                        ?: error("Couldn't open backup file")
+                                }
+                            }
+                            val outcome = text.fold(
+                                onSuccess = { backupRepo.import(it) },
+                                onFailure = { BackupResult.Failure(it.message ?: "Read failed") },
+                            )
+                            val msg = when (outcome) {
+                                is BackupResult.Success -> "Restored ${outcome.rowCount} rows"
+                                is BackupResult.Failure -> outcome.message
+                            }
+                            snackbarHost.showSnackbar(msg)
+                        }
+                    },
+                ) {
+                    Text("Restore", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingRestore = null }) {
+                    Text("Cancel")
+                }
+            },
+            title = { Text("Restore from backup?") },
+            text = {
+                Text(
+                    "This will replace ALL workouts, sessions, meals, and " +
+                        "settings with the backup's contents. This can't be undone.",
                 )
             },
         )
@@ -479,6 +594,11 @@ private fun formatHourMinute(hour: Int, minute: Int): String {
     val h12 = ((hour + 11) % 12) + 1
     val ampm = if (hour < 12) "AM" else "PM"
     return "%d:%02d %s".format(h12, minute, ampm)
+}
+
+private fun defaultBackupFileName(): String {
+    val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date())
+    return "vector-backup-$stamp.json"
 }
 
 private fun formatVolume(totals: com.example.fitness_tracker.log.TodayTotals): String {
