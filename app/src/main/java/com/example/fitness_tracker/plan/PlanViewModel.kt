@@ -142,8 +142,9 @@ class PlanViewModel(app: Application) : AndroidViewModel(app) {
                 }
             } catch (e: Exception) {
                 Log.e("PlanViewModel", "generateContent failed", e)
-                val msg = e.localizedMessage ?: e::class.simpleName ?: "Unknown error"
-                _uiState.value = UiState.Error("AI request failed: $msg")
+                _uiState.value = UiState.Error(
+                    com.example.fitness_tracker.ai.friendlyAiError(e),
+                )
             }
         }
     }
