@@ -21,11 +21,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.outlined.Brightness6
 import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -46,8 +48,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.fitness_tracker.auth.AuthViewModel
 import com.example.fitness_tracker.log.LogViewModel
 import com.example.fitness_tracker.plan.PlanViewModel
+import androidx.compose.ui.platform.LocalContext
 import com.example.fitness_tracker.ui.MinimalTextField
 import com.example.fitness_tracker.ui.PillCta
+import com.example.fitness_tracker.ui.theme.ThemeMode
+import com.example.fitness_tracker.ui.theme.ThemeModeStore
 
 @Composable
 fun ProfileScreen(
@@ -66,6 +71,11 @@ fun ProfileScreen(
 
     var confirmingClear by remember { mutableStateOf(false) }
     var editingProfile by remember { mutableStateOf(false) }
+    var themePicker by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val themeStore = remember(context) { ThemeModeStore.get(context) }
+    val themeMode by themeStore.mode.collectAsState()
 
     val scroll = rememberScrollState()
     val topInset = contentPadding.calculateTopPadding()
@@ -181,6 +191,20 @@ fun ProfileScreen(
             } ?: "Off",
             onClick = onOpenReminder,
         )
+        HorizontalDivider(
+            modifier = Modifier.padding(start = 56.dp),
+            color = MaterialTheme.colorScheme.outlineVariant,
+        )
+        SettingsRow(
+            icon = Icons.Outlined.Brightness6,
+            title = "Theme",
+            subtitle = when (themeMode) {
+                ThemeMode.SYSTEM -> "System default"
+                ThemeMode.LIGHT -> "Light"
+                ThemeMode.DARK -> "Dark"
+            },
+            onClick = { themePicker = true },
+        )
 
         Spacer(modifier = Modifier.height(28.dp))
 
@@ -223,6 +247,17 @@ fun ProfileScreen(
         )
     }
 
+    if (themePicker) {
+        ThemePickerDialog(
+            current = themeMode,
+            onPick = {
+                themeStore.set(it)
+                themePicker = false
+            },
+            onDismiss = { themePicker = false },
+        )
+    }
+
     if (editingProfile) {
         EditProfileDialog(
             initialName = profile?.name.orEmpty(),
@@ -232,6 +267,56 @@ fun ProfileScreen(
                 authViewModel.saveProfile(name, email)
                 editingProfile = false
             },
+        )
+    }
+}
+
+@Composable
+private fun ThemePickerDialog(
+    current: ThemeMode,
+    onPick: (ThemeMode) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Done") }
+        },
+        title = { Text("Theme") },
+        text = {
+            Column {
+                ThemeOption("System default", ThemeMode.SYSTEM, current, onPick)
+                ThemeOption("Light", ThemeMode.LIGHT, current, onPick)
+                ThemeOption("Dark", ThemeMode.DARK, current, onPick)
+            }
+        },
+    )
+}
+
+@Composable
+private fun ThemeOption(
+    label: String,
+    value: ThemeMode,
+    current: ThemeMode,
+    onPick: (ThemeMode) -> Unit,
+) {
+    val selected = value == current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onPick(value) }
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(
+            selected = selected,
+            onClick = { onPick(value) },
+        )
+        Spacer(modifier = Modifier.size(8.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
         )
     }
 }

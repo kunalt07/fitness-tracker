@@ -73,6 +73,7 @@ val LocalSnackbarHost = compositionLocalOf<SnackbarHostState> {
     error("No SnackbarHostState provided")
 }
 
+
 /**
  * Show an "X deleted · Undo" snackbar. Caller has already done the delete; if the
  * user taps Undo, we invoke [restore]. Returns immediately; runs in [scope].
@@ -182,24 +183,6 @@ fun FitnessApp() {
                 composable(TopLevelDest.Stats.route) { StatsScreen(contentPadding = screenPadding) }
             }
 
-            // Soft fade above the floating nav so scrollable content dissolves
-            // into the surface instead of cutting off at a hard edge.
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(NAV_BAR_HEIGHT_DP.dp + 60.dp)
-                    .background(
-                        brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                            colors = listOf(
-                                androidx.compose.ui.graphics.Color.Transparent,
-                                MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                                MaterialTheme.colorScheme.surface,
-                            ),
-                        ),
-                    ),
-            )
-
             // Floating nav bar overlays the content; only the pill chrome is opaque.
             Box(
                 modifier = Modifier.align(Alignment.BottomCenter),
@@ -282,7 +265,8 @@ private fun FloatingNavBar(
                     )
                 },
             shape = RoundedCornerShape(28.dp),
-            color = MaterialTheme.colorScheme.surface,
+            // Translucent so the nav reads as a frosted floating panel.
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
             tonalElevation = 0.dp,
             shadowElevation = 6.dp,
         ) {

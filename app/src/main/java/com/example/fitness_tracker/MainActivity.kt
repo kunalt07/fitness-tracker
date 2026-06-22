@@ -13,12 +13,18 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.fitness_tracker.auth.AuthViewModel
 import com.example.fitness_tracker.auth.WelcomeScreen
 import com.example.fitness_tracker.ui.theme.FitnessTrackerTheme
+import com.example.fitness_tracker.ui.theme.ThemeModeStore
+import com.example.fitness_tracker.ui.theme.resolveDarkTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            FitnessTrackerTheme {
+            // Observe the user's theme preference. Re-renders the whole tree
+            // when they pick a different mode in Settings.
+            val themeMode by ThemeModeStore.get(applicationContext)
+                .mode.collectAsState()
+            FitnessTrackerTheme(darkTheme = themeMode.resolveDarkTheme()) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background,

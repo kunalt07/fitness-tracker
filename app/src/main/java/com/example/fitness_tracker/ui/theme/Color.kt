@@ -7,7 +7,7 @@ import androidx.compose.ui.graphics.Color
 // Decorative color appears only via the muscle-group palette.
 
 // Light scheme
-val Primary = Color(0xFF1F8A4C)              // brand green (CTAs only)
+val Primary = Color(0xFF5B3FFF)              // brand deep violet (CTAs only)
 val OnPrimary = Color(0xFFFFFFFF)
 // `primaryContainer` is intentionally NOT a green tint. Many surfaces in M3
 // (selected tiles, today-pill, time picker, avatar bg, etc.) read this token —
@@ -40,8 +40,8 @@ val OnSurfaceVariant = Color(0xFF5C5C5C)
 val Outline = Color(0xFFBFBFBF)
 
 // Dark scheme
-val PrimaryDark = Color(0xFF7BD7A2)           // brand green, lifted for dark
-val OnPrimaryDark = Color(0xFF003918)
+val PrimaryDark = Color(0xFF9B89FF)           // brand violet, lifted for dark
+val OnPrimaryDark = Color(0xFF1A0F4F)
 // Neutralized — see light-scheme comment above.
 val PrimaryContainerDark = Color(0xFF262626)
 val OnPrimaryContainerDark = Color(0xFFEDEDED)
@@ -61,20 +61,24 @@ val OnErrorColorDark = Color(0xFF601410)
 val ErrorContainerDark = Color(0xFF8C1D18)
 val OnErrorContainerDark = Color(0xFFF9DEDC)
 
-val BackgroundDark = Color(0xFF101010)
+// Pitch-black surfaces in dark mode. SurfaceVariant lifts to #161616 so
+// chips / cards / "subtle differences" still have a visible step against
+// the pure-black background without losing the OLED-friendly black canvas.
+val BackgroundDark = Color(0xFF000000)
 val OnBackgroundDark = Color(0xFFECECEC)
-val SurfaceDark = Color(0xFF101010)
+val SurfaceDark = Color(0xFF000000)
 val OnSurfaceDark = Color(0xFFECECEC)
-val SurfaceVariantDark = Color(0xFF1F1F1F)
+val SurfaceVariantDark = Color(0xFF161616)
 val OnSurfaceVariantDark = Color(0xFFB5B5B5)
 val OutlineDark = Color(0xFF555555)
 
 // --- Per-feature accents ---
 // Each tab carries one signature color so the user can identify a screen at a
-// glance. Brand green stays reserved for primary CTAs and the nav-bar pill.
+// glance. Brand violet stays reserved for primary CTAs and the nav-bar pill.
 //
 // Picks are based on category convention:
-//   • Plan → indigo: ChatGPT / Linear / Notion-AI use violet for AI output
+//   • Plan → teal: distinguishes from brand violet while still reading as a
+//     "cool / generative" hue. Linear's accent and Apple's Notes are similar.
 //   • Diet → amber:  MyFitnessPal / Yuka / Cronometer all warm-color food
 //   • Stats → steel blue: Whoop / Apple Health / GitHub Insights use cool tones
 //     for analytics surfaces
@@ -82,12 +86,12 @@ val OutlineDark = Color(0xFF555555)
 // Each has a light (`AccentX`) and dark (`AccentXDark`) variant tuned for
 // AA-contrast against the surface in their respective scheme.
 
-val AccentPlan = Color(0xFF6E56CF)            // indigo (AI / generated content)
-val AccentPlanDark = Color(0xFFA89BF0)
-val AccentPlanContainer = Color(0xFFE9E4FA)
-val AccentPlanContainerDark = Color(0xFF2E2552)
-val OnAccentPlanContainer = Color(0xFF1F1A4A)
-val OnAccentPlanContainerDark = Color(0xFFE9E4FA)
+val AccentPlan = Color(0xFF0EA5A0)            // teal (AI / generated content)
+val AccentPlanDark = Color(0xFF5EE2D9)
+val AccentPlanContainer = Color(0xFFD8F3F1)
+val AccentPlanContainerDark = Color(0xFF0E3F3D)
+val OnAccentPlanContainer = Color(0xFF073B39)
+val OnAccentPlanContainerDark = Color(0xFFD8F3F1)
 
 val AccentDiet = Color(0xFFE89B3D)            // amber (food / nutrition)
 val AccentDietDark = Color(0xFFF4B870)

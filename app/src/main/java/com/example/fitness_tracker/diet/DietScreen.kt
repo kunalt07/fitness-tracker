@@ -95,7 +95,7 @@ internal fun DietScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 24.dp)
-                        .padding(top = 32.dp, bottom = 24.dp),
+                        .padding(top = 8.dp, bottom = 24.dp),
                 ) {
                     Text(
                         text = "Diet Plan",

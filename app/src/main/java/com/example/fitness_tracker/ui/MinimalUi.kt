@@ -48,6 +48,9 @@ fun ScreenTitle(
     text: String,
     modifier: Modifier = Modifier,
 ) {
+    // Top padding kept tight (8dp) — each screen already adds the system
+    // status-bar inset above this composable, so any extra padding here
+    // shows up as a visible gap between the status bar and the title.
     Text(
         text = text,
         style = MaterialTheme.typography.displayMedium,
@@ -55,7 +58,7 @@ fun ScreenTitle(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp)
-            .padding(top = 32.dp, bottom = 24.dp),
+            .padding(top = 8.dp, bottom = 24.dp),
     )
 }
 
