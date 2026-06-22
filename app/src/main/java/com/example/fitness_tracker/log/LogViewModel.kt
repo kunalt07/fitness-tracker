@@ -72,6 +72,11 @@ class LogViewModel(app: Application) : AndroidViewModel(app) {
     val plannedExerciseIds: StateFlow<List<Long>> =
         repo.pendingPlan.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    /** Set IDs that are the user's all-time best estimated-1RM for that exercise. */
+    val prSetIds: StateFlow<Set<Long>> =
+        repo.prSetIds.map { it.toSet() }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
     val templates: StateFlow<List<WorkoutTemplate>> =
         repo.templates.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 

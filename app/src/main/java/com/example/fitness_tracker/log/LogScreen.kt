@@ -77,6 +77,7 @@ fun LogScreen(
     val active by viewModel.activeSession.collectAsState()
     val exercises by viewModel.exercises.collectAsState()
     val sets by viewModel.sets.collectAsState()
+    val prSetIds by viewModel.prSetIds.collectAsState()
     val planned by viewModel.plannedExerciseIds.collectAsState()
     val restRemaining by viewModel.restRemainingSec.collectAsState()
     val templates by viewModel.templates.collectAsState()
@@ -163,6 +164,7 @@ fun LogScreen(
                                 GroupedSetRow(
                                     indexInGroup = idx + 1,
                                     set = s,
+                                    isPr = s.id in prSetIds,
                                     onTap = { sheetMode = SheetMode.Edit(s.id) },
                                     onDelete = {
                                         scope.launch {
@@ -531,6 +533,7 @@ private fun ExerciseGroupHeader(
 private fun GroupedSetRow(
     indexInGroup: Int,
     set: SetWithExerciseRow,
+    isPr: Boolean,
     onTap: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -561,6 +564,9 @@ private fun GroupedSetRow(
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(1f),
         )
+        if (isPr) {
+            PrBadge(modifier = Modifier.padding(end = 4.dp))
+        }
         IconButton(onClick = onDelete) {
             Icon(
                 Icons.Filled.Close,
@@ -568,6 +574,24 @@ private fun GroupedSetRow(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+@Composable
+private fun PrBadge(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .background(
+                color = com.example.fitness_tracker.ui.theme.AccentPr,
+                shape = RoundedCornerShape(50),
+            )
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    ) {
+        Text(
+            text = "PR",
+            style = MaterialTheme.typography.labelSmall,
+            color = androidx.compose.ui.graphics.Color.White,
+        )
     }
 }
 
