@@ -265,10 +265,11 @@ private fun FloatingNavBar(
                     )
                 },
             shape = RoundedCornerShape(28.dp),
-            // Translucent so the nav reads as a frosted floating panel.
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+            // Fully opaque so no content scrolls visibly behind it. Soft
+            // shadow only — anything stronger reads as a "stacked" layer.
+            color = MaterialTheme.colorScheme.surface,
             tonalElevation = 0.dp,
-            shadowElevation = 6.dp,
+            shadowElevation = 4.dp,
         ) {
             // Each tab is a fixed-width slot so the bar's total width is constant
             // and the sliding pill always lines up with exactly one slot.

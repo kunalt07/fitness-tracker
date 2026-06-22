@@ -198,12 +198,12 @@ fun LogScreen(
         ) {
             Surface(
                 shape = RoundedCornerShape(28.dp),
-                // Translucent so the dock reads as a frosted floating panel
-                // — content glimpses through but stays subdued enough to keep
-                // icons / buttons legible.
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                // Fully transparent — no card fill, no white strip. Each
+                // control inside (Repeat last pill, End session pill, Log set
+                // CTA) brings its own background. Quick log icon stays bare.
+                color = androidx.compose.ui.graphics.Color.Transparent,
                 tonalElevation = 0.dp,
-                shadowElevation = 6.dp,
+                shadowElevation = 0.dp,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(modifier = Modifier.padding(vertical = 8.dp)) {
