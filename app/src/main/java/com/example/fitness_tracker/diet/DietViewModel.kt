@@ -112,7 +112,7 @@ class DietViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: Exception) {
                 Log.e("DietViewModel", "suggestMore failed", e)
                 _suggestState.value = SuggestState.Error(
-                    e.localizedMessage ?: "AI request failed.",
+                    com.example.fitness_tracker.ai.friendlyAiError(e),
                 )
             }
         }

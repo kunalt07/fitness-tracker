@@ -234,7 +234,9 @@ class LogViewModel(app: Application) : AndroidViewModel(app) {
                     ?: UiState.Error("Empty response.")
             } catch (e: Exception) {
                 Log.e("LogViewModel", "critique failed", e)
-                _critique.value = UiState.Error(e.localizedMessage ?: "Couldn't reach the coach.")
+                _critique.value = UiState.Error(
+                    com.example.fitness_tracker.ai.friendlyAiError(e),
+                )
             }
         }
     }
@@ -277,7 +279,9 @@ class LogViewModel(app: Application) : AndroidViewModel(app) {
                 }
             } catch (e: Exception) {
                 Log.e("LogViewModel", "quick log parse failed", e)
-                _quickLog.value = QuickLogState.Error(e.localizedMessage ?: "Couldn't reach the parser.")
+                _quickLog.value = QuickLogState.Error(
+                    com.example.fitness_tracker.ai.friendlyAiError(e),
+                )
             }
         }
     }
