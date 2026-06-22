@@ -36,7 +36,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
+import com.example.fitness_tracker.ui.rememberFullSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -557,7 +557,7 @@ private fun SetSheet(
     onSubmitNew: (Long, Int, Double, Int, Int) -> Unit,
     onSubmitEdit: (Long, Int, Double, Int, Int) -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberFullSheetState()
     val scope = rememberCoroutineScope()
 
     val editingRow = (mode as? SheetMode.Edit)?.let { m ->
@@ -867,7 +867,7 @@ internal fun QuickLogSheet(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberFullSheetState()
     var input by rememberSaveable { mutableStateOf("") }
 
     ModalBottomSheet(
@@ -985,7 +985,7 @@ private fun CritiqueSheet(
     state: com.example.fitness_tracker.UiState,
     onDismiss: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberFullSheetState()
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,

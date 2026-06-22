@@ -15,7 +15,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TimePickerDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
+import com.example.fitness_tracker.ui.rememberFullSheetState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -38,7 +38,7 @@ fun ReminderSettingsSheet(
     onSave: (enabled: Boolean, hour: Int, minute: Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val sheetState = rememberFullSheetState()
     var enabled by rememberSaveable { mutableStateOf(initialEnabled) }
     val timeState = rememberTimePickerState(
         initialHour = initialHour,

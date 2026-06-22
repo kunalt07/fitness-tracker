@@ -114,7 +114,7 @@ app/src/main/java/com/example/fitness_tracker/
 
 ## License
 
-MIT — see `LICENSE` if added, or use freely.
+MIT — see [LICENSE](LICENSE).
 
 ---
 
