@@ -2,6 +2,7 @@ package com.example.fitness_tracker.log
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -55,7 +56,6 @@ import com.example.fitness_tracker.data.Exercise
 import com.example.fitness_tracker.data.ExerciseKind
 import com.example.fitness_tracker.data.SetWithExerciseRow
 import com.example.fitness_tracker.data.WorkoutTemplate
-import com.example.fitness_tracker.ui.BottomCtaBar
 import com.example.fitness_tracker.ui.ExercisePickerDialog
 import com.example.fitness_tracker.ui.MinimalTextField
 import com.example.fitness_tracker.ui.PillChip
@@ -185,68 +185,68 @@ fun LogScreen(
             }
         }
 
-        // Soft fade above the floating CTA stack so content scrolls away
-        // gracefully instead of cutting off at a hard edge.
+        // Floating dock — same chrome as the bottom nav: rounded card, surface
+        // color, soft shadow, inset from screen edges. Holds the action row,
+        // optional rest banner, and primary CTA together.
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(180.dp)
                 .padding(bottom = bottomInset)
-                .background(
-                    brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                        colors = listOf(
-                            androidx.compose.ui.graphics.Color.Transparent,
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
-                            MaterialTheme.colorScheme.surface,
-                        ),
-                    ),
-                ),
-        )
-
-        // Floating action stack: action row + rest banner + primary CTA.
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(bottom = bottomInset),
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                // Translucent so the dock reads as a frosted floating panel
+                // — content glimpses through but stays subdued enough to keep
+                // icons / buttons legible.
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                tonalElevation = 0.dp,
+                shadowElevation = 6.dp,
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                if (active != null && sets.isNotEmpty()) {
-                    RepeatLastPill(onClick = { viewModel.repeatLastSet() })
-                }
-                IconButton(
-                    onClick = { quickLogOpen = true },
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.EditNote,
-                        contentDescription = "Quick log",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Spacer(modifier = Modifier.weight(1f))
-                if (active != null) {
-                    QuietTextButton(label = "End session", onClick = { viewModel.endSession() })
+                Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        if (active != null && sets.isNotEmpty()) {
+                            RepeatLastPill(onClick = { viewModel.repeatLastSet() })
+                        }
+                        IconButton(
+                            onClick = { quickLogOpen = true },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.EditNote,
+                                contentDescription = "Quick log",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Spacer(modifier = Modifier.weight(1f))
+                        if (active != null) {
+                            EndSessionPill(onClick = { viewModel.endSession() })
+                        }
+                    }
+
+                    if (restRemaining > 0) {
+                        RestBanner(remainingSec = restRemaining, onSkip = viewModel::cancelRest)
+                    }
+
+                    Box(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                        PillCta(
+                            label = if (active == null) "Start workout" else "Log set",
+                            onClick = {
+                                if (active == null) viewModel.startSession()
+                                else sheetMode = SheetMode.New(prefillExerciseId = null)
+                            },
+                        )
+                    }
                 }
             }
-
-            if (restRemaining > 0) {
-                RestBanner(remainingSec = restRemaining, onSkip = viewModel::cancelRest)
-            }
-
-            BottomCtaBar(
-                label = if (active == null) "Start workout" else "Log set",
-                onClick = {
-                    if (active == null) viewModel.startSession()
-                    else sheetMode = SheetMode.New(prefillExerciseId = null)
-                },
-            )
         }
     }
 
@@ -344,6 +344,34 @@ private fun PlannedRow(
                 )
             }
         }
+    }
+}
+
+/**
+ * "End session" — outlined pill in the error color so it reads as a destructive
+ * action, but quieter than the green primary CTA below it. Same height as the
+ * other pills in the dock so the row stays aligned.
+ */
+@Composable
+private fun EndSessionPill(onClick: () -> Unit) {
+    val errorColor = MaterialTheme.colorScheme.error
+    Box(
+        modifier = Modifier
+            .height(40.dp)
+            .border(
+                width = 1.dp,
+                color = errorColor,
+                shape = RoundedCornerShape(50),
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "End session",
+            style = MaterialTheme.typography.labelLarge,
+            color = errorColor,
+        )
     }
 }
 

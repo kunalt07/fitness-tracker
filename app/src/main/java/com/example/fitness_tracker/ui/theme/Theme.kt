@@ -73,3 +73,15 @@ fun FitnessTrackerTheme(
         content = content,
     )
 }
+
+/**
+ * Resolve a [ThemeMode] preference into the final boolean Compose needs.
+ * Centralises the single bit of logic so MainActivity and any preview
+ * helper share the same answer.
+ */
+@Composable
+fun ThemeMode.resolveDarkTheme(): Boolean = when (this) {
+    ThemeMode.LIGHT -> false
+    ThemeMode.DARK -> true
+    ThemeMode.SYSTEM -> isSystemInDarkTheme()
+}

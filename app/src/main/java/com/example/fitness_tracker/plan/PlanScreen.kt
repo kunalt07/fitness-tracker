@@ -131,6 +131,11 @@ fun PlanScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(scroll)
+                // imePadding() pushes content up when the keyboard opens so the
+                // focused text field + its suggestion chips stay visible. Without
+                // it the keyboard covers the bottom half of the screen and the
+                // suggestions get hidden + scrolling appears stuck.
+                .imePadding()
                 .padding(top = topInset)
                 .padding(bottom = bottomInset + bottomReserve),
         ) {
