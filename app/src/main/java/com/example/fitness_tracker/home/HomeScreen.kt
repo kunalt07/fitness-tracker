@@ -79,6 +79,7 @@ internal fun HomeScreen(
     val split by planViewModel.weeklySplit.collectAsState()
     val todayTotals by logViewModel.todayTotals.collectAsState()
     val activeSession by logViewModel.activeSession.collectAsState()
+    val plannedExerciseIds by logViewModel.plannedExerciseIds.collectAsState()
     val reminder by planViewModel.reminderSettings.collectAsState()
     val statsState by statsViewModel.state.collectAsState()
     val bodyWeightToday by dailyViewModel.bodyWeightToday.collectAsState()
@@ -154,8 +155,10 @@ internal fun HomeScreen(
         TodayHeroCard(
             focus = focus,
             isActive = activeSession != null,
+            plannedCount = plannedExerciseIds.size,
             todayTotals = todayTotals,
             onPrimaryAction = { onNavigate(TopLevelDest.Log) },
+            onPlanToday = { onNavigate(TopLevelDest.Plan) },
         )
 
         // Daily check-ins.
@@ -295,8 +298,10 @@ internal fun HomeScreen(
 private fun TodayHeroCard(
     focus: String?,
     isActive: Boolean,
+    plannedCount: Int,
     todayTotals: com.example.fitness_tracker.log.TodayTotals,
     onPrimaryAction: () -> Unit,
+    onPlanToday: () -> Unit,
 ) {
     val accent = focus?.let { com.example.fitness_tracker.ui.theme.focusKeywordColor(it) }
     val accentDot = accent ?: MaterialTheme.colorScheme.primary
@@ -339,25 +344,43 @@ private fun TodayHeroCard(
                 else MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            // Stats row.
-            if (todayTotals.sets > 0) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(24.dp),
-                ) {
-                    StatBlock(value = "${todayTotals.sets}", label = "sets")
-                    StatBlock(value = "${todayTotals.exercises}", label = "exercises")
-                    StatBlock(value = formatVolumeBrief(todayTotals), label = "volume")
+            // Stats row, or planned-exercises hint, or empty caption.
+            // The hint takes priority when no session has started yet — it
+            // tells the user the AI plan is queued and waiting on Log.
+            when {
+                todayTotals.sets > 0 -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(24.dp),
+                    ) {
+                        StatBlock(value = "${todayTotals.sets}", label = "sets")
+                        StatBlock(value = "${todayTotals.exercises}", label = "exercises")
+                        StatBlock(value = formatVolumeBrief(todayTotals), label = "volume")
+                    }
                 }
-            } else {
-                Text(
-                    text = "Nothing logged yet today.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                plannedCount > 0 -> {
+                    Text(
+                        text = "$plannedCount ${if (plannedCount == 1) "exercise" else "exercises"} queued for today.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                else -> {
+                    Text(
+                        text = "Nothing logged yet today.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             // Primary action pill inside the card.
+            val ctaLabel = when {
+                isActive -> "Continue session"
+                plannedCount > 0 -> "Start planned workout"
+                todayTotals.sets > 0 -> "Resume workout"
+                else -> "Start workout"
+            }
             Button(
                 onClick = onPrimaryAction,
                 modifier = Modifier
@@ -370,12 +393,24 @@ private fun TodayHeroCard(
                 ),
             ) {
                 Text(
-                    text = when {
-                        isActive -> "Continue session"
-                        todayTotals.sets > 0 -> "Resume workout"
-                        else -> "Start workout"
-                    },
+                    text = ctaLabel,
                     style = MaterialTheme.typography.titleMedium,
+                )
+            }
+
+            // Secondary CTA — only when nothing is queued and no session is
+            // running. Points the user at the Plan tab to AI-generate one;
+            // without this, a fresh user has no signal that path exists.
+            if (!isActive && plannedCount == 0 && todayTotals.sets == 0) {
+                Text(
+                    text = "Plan today with AI",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onPlanToday() }
+                        .padding(vertical = 6.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
             }
         }
