@@ -80,6 +80,7 @@ fun LogScreen(
     val prSetIds by viewModel.prSetIds.collectAsState()
     val planned by viewModel.plannedExerciseIds.collectAsState()
     val restRemaining by viewModel.restRemainingSec.collectAsState()
+    val restTotal by viewModel.restTotalSec.collectAsState()
     val templates by viewModel.templates.collectAsState()
     val saveTemplatePromptId by viewModel.saveTemplatePrompt.collectAsState()
     val critique by viewModel.critique.collectAsState()
@@ -91,6 +92,19 @@ fun LogScreen(
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var sheetMode by rememberSaveable(stateSaver = SheetModeSaver) {
         mutableStateOf<SheetMode?>(null)
+    }
+
+    // PR celebration — the ViewModel fires a name when a logged set becomes a
+    // record; buzz once and raise the confetti overlay.
+    var prCelebration by remember { mutableStateOf<String?>(null) }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    LaunchedEffect(Unit) {
+        viewModel.prCelebration.collect { name ->
+            haptic.performHapticFeedback(
+                androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress,
+            )
+            prCelebration = name
+        }
     }
 
     val plannedExercises = remember(planned, exercises) {
@@ -235,7 +249,11 @@ fun LogScreen(
                     }
 
                     if (restRemaining > 0) {
-                        RestBanner(remainingSec = restRemaining, onSkip = viewModel::cancelRest)
+                        RestBanner(
+                            remainingSec = restRemaining,
+                            totalSec = restTotal,
+                            onSkip = viewModel::cancelRest,
+                        )
                     }
 
                     Box(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
@@ -249,6 +267,13 @@ fun LogScreen(
                     }
                 }
             }
+        }
+
+        prCelebration?.let { name ->
+            com.example.fitness_tracker.ui.PrCelebrationOverlay(
+                exerciseName = name,
+                onDone = { prCelebration = null },
+            )
         }
     }
 
@@ -378,7 +403,20 @@ private fun EndSessionPill(onClick: () -> Unit) {
 }
 
 @Composable
-private fun RestBanner(remainingSec: Int, onSkip: () -> Unit) {
+private fun RestBanner(remainingSec: Int, totalSec: Int, onSkip: () -> Unit) {
+    // Progress drains smoothly each second rather than jumping per tick.
+    val total = totalSec.coerceAtLeast(1)
+    val progress by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = (remainingSec.toFloat() / total).coerceIn(0f, 1f),
+        animationSpec = androidx.compose.animation.core.tween(
+            durationMillis = 1000,
+            easing = androidx.compose.animation.core.LinearEasing,
+        ),
+        label = "restRing",
+    )
+    val ringColor = MaterialTheme.colorScheme.primary
+    val trackColor = MaterialTheme.colorScheme.outlineVariant
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -391,11 +429,47 @@ private fun RestBanner(remainingSec: Int, onSkip: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(
-                text = "Rest · ${formatRest(remainingSec)}",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(modifier = Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+                    androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                        val sw = 4.dp.toPx()
+                        val inset = sw / 2f
+                        val arcSize = androidx.compose.ui.geometry.Size(
+                            size.width - sw, size.height - sw,
+                        )
+                        val topLeft = androidx.compose.ui.geometry.Offset(inset, inset)
+                        drawArc(
+                            color = trackColor,
+                            startAngle = 0f,
+                            sweepAngle = 360f,
+                            useCenter = false,
+                            topLeft = topLeft,
+                            size = arcSize,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(sw),
+                        )
+                        drawArc(
+                            color = ringColor,
+                            startAngle = -90f,
+                            sweepAngle = 360f * progress,
+                            useCenter = false,
+                            topLeft = topLeft,
+                            size = arcSize,
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                width = sw,
+                                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                            ),
+                        )
+                    }
+                }
+                Text(
+                    text = "Rest · ${formatRest(remainingSec)}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
             QuietTextButton(label = "Skip", onClick = onSkip)
         }
     }

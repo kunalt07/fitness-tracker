@@ -1,6 +1,5 @@
 package com.example.fitness_tracker.home
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,13 +18,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Bedtime
-import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Mood
@@ -42,13 +41,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -86,11 +87,10 @@ internal fun HomeScreen(
     val readinessToday by dailyViewModel.readinessToday.collectAsState()
     val waterToday by dailyViewModel.waterToday.collectAsState()
     val weightGoal by dailyViewModel.weightGoal.collectAsState()
-    val quickLog by logViewModel.quickLog.collectAsState()
-    var quickLogOpen by androidx.compose.runtime.saveable.rememberSaveable {
+    var showWeight by androidx.compose.runtime.saveable.rememberSaveable {
         androidx.compose.runtime.mutableStateOf(false)
     }
-    var showWeight by androidx.compose.runtime.saveable.rememberSaveable {
+    var showFood by androidx.compose.runtime.saveable.rememberSaveable {
         androidx.compose.runtime.mutableStateOf(false)
     }
     var showReadiness by androidx.compose.runtime.saveable.rememberSaveable {
@@ -156,6 +156,7 @@ internal fun HomeScreen(
             focus = focus,
             isActive = activeSession != null,
             plannedCount = plannedExerciseIds.size,
+            streak = statsState.streakDays,
             todayTotals = todayTotals,
             onPrimaryAction = { onNavigate(TopLevelDest.Log) },
             onPlanToday = { onNavigate(TopLevelDest.Plan) },
@@ -172,13 +173,6 @@ internal fun HomeScreen(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             DailyTile(
-                icon = Icons.Outlined.EditNote,
-                label = "Quick log",
-                value = null,
-                filled = false,
-                onClick = { quickLogOpen = true },
-            )
-            DailyTile(
                 icon = Icons.Outlined.Scale,
                 label = "Weight",
                 value = formatWeightTileValue(bodyWeightToday?.weightKg, weightGoal?.targetKg),
@@ -187,13 +181,14 @@ internal fun HomeScreen(
             )
             DailyTile(
                 icon = Icons.Outlined.Restaurant,
-                label = "Calories",
+                label = "Food",
                 value = formatCaloriesTileValue(
                     consumed = dietTotals.calories,
                     target = dietGoal?.targetCalories,
                 ),
                 filled = dietTotals.calories > 0,
-                onClick = { onNavigate(TopLevelDest.Diet) },
+                onClick = { showFood = true },
+                onLongPress = { onNavigate(TopLevelDest.Diet) },
             )
             DailyTile(
                 icon = Icons.Outlined.WaterDrop,
@@ -205,27 +200,37 @@ internal fun HomeScreen(
             )
         }
 
-        // This week.
+        // This week. Streak now lives on the hero flame, so this section
+        // just labels the weekly bar grid.
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            val activeDays = statsState.weeklySetsPerDay.count { it > 0 }
+            val goalMet = activeDays >= WEEKLY_ACTIVE_GOAL
+            val streakColor = com.example.fitness_tracker.ui.theme.featureAccent(
+                com.example.fitness_tracker.ui.theme.Feature.STREAK,
+            ).main
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text = "This week",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
+                // Activity score — turns the week into a target to fill. Goes
+                // coral the moment the weekly goal lands.
                 Text(
-                    text = "${statsState.streakDays}d streak",
+                    text = if (goalMet) "🔥 $activeDays/7 active" else "$activeDays/7 active",
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (goalMet) streakColor else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            HomeWeeklyBars(
+            HomeWeekDots(
                 values = statsState.weeklySetsPerDay,
                 labels = statsState.weekDayLabels,
+                goalMet = goalMet,
+                celebrateColor = streakColor,
                 onClick = { onNavigate(TopLevelDest.Stats) },
             )
         }
@@ -245,6 +250,22 @@ internal fun HomeScreen(
         )
     }
 
+    if (showFood) {
+        FoodQuickAddSheet(
+            consumed = dietTotals.calories,
+            target = dietGoal?.targetCalories,
+            onDismiss = { showFood = false },
+            onOpenDiet = {
+                showFood = false
+                onNavigate(TopLevelDest.Diet)
+            },
+            onSave = { name, cal, protein ->
+                dietViewModel.quickAddFood(name, cal, protein)
+                showFood = false
+            },
+        )
+    }
+
     if (showReadiness) {
         ReadinessSheet(
             initial = readinessToday?.level,
@@ -252,21 +273,6 @@ internal fun HomeScreen(
             onSave = { level ->
                 dailyViewModel.saveReadiness(level)
                 showReadiness = false
-            },
-        )
-    }
-
-    if (quickLogOpen) {
-        com.example.fitness_tracker.log.QuickLogSheet(
-            state = quickLog,
-            onParse = { logViewModel.parseQuickLog(it) },
-            onConfirm = {
-                logViewModel.confirmQuickLog()
-                quickLogOpen = false
-            },
-            onDismiss = {
-                logViewModel.dismissQuickLog()
-                quickLogOpen = false
             },
         )
     }
@@ -299,6 +305,7 @@ private fun TodayHeroCard(
     focus: String?,
     isActive: Boolean,
     plannedCount: Int,
+    streak: Int,
     todayTotals: com.example.fitness_tracker.log.TodayTotals,
     onPrimaryAction: () -> Unit,
     onPlanToday: () -> Unit,
@@ -332,8 +339,31 @@ private fun TodayHeroCard(
                     text = if (isActive) "Session in progress" else "Today",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 8.dp),
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .weight(1f),
                 )
+                // Streak flame — only once the user has a live streak going, so
+                // a fresh install doesn't show a discouraging "0".
+                if (streak > 0) {
+                    val streakColor = com.example.fitness_tracker.ui.theme.featureAccent(
+                        com.example.fitness_tracker.ui.theme.Feature.STREAK,
+                    ).main
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Filled.LocalFireDepartment,
+                            contentDescription = "Day streak",
+                            tint = streakColor,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text(
+                            text = "$streak",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = streakColor,
+                            modifier = Modifier.padding(start = 4.dp),
+                        )
+                    }
+                }
             }
 
             // Big focus headline.
@@ -349,13 +379,30 @@ private fun TodayHeroCard(
             // tells the user the AI plan is queued and waiting on Log.
             when {
                 todayTotals.sets > 0 -> {
+                    // Count up from 0 when the stats appear — a bit of life on
+                    // the numbers instead of a hard snap.
+                    val spec = androidx.compose.animation.core.tween<Int>(700)
+                    val animSets by androidx.compose.animation.core.animateIntAsState(
+                        targetValue = todayTotals.sets, animationSpec = spec, label = "sets",
+                    )
+                    val animEx by androidx.compose.animation.core.animateIntAsState(
+                        targetValue = todayTotals.exercises, animationSpec = spec, label = "exercises",
+                    )
+                    val animVol by androidx.compose.animation.core.animateFloatAsState(
+                        targetValue = todayTotals.volume.weightKgReps.toFloat(),
+                        animationSpec = androidx.compose.animation.core.tween(700),
+                        label = "volume",
+                    )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(24.dp),
                     ) {
-                        StatBlock(value = "${todayTotals.sets}", label = "sets")
-                        StatBlock(value = "${todayTotals.exercises}", label = "exercises")
-                        StatBlock(value = formatVolumeBrief(todayTotals), label = "volume")
+                        StatBlock(value = "$animSets", label = "sets")
+                        StatBlock(value = "$animEx", label = "exercises")
+                        StatBlock(
+                            value = formatVolumeBrief(todayTotals, animVol.toDouble()),
+                            label = "volume",
+                        )
                     }
                 }
                 plannedCount > 0 -> {
@@ -417,55 +464,94 @@ private fun TodayHeroCard(
     }
 }
 
+// Active days in a week that trip the coral celebration.
+private const val WEEKLY_ACTIVE_GOAL = 4
+
 @Composable
-private fun HomeWeeklyBars(
+private fun HomeWeekDots(
     values: List<Int>,
     labels: List<String>,
+    goalMet: Boolean,
+    celebrateColor: androidx.compose.ui.graphics.Color,
     onClick: () -> Unit,
 ) {
-    val max = (values.maxOrNull() ?: 0).coerceAtLeast(1)
+    val scaleMax = (values.maxOrNull() ?: 0).coerceAtLeast(1).toFloat()
     val ink = MaterialTheme.colorScheme.primary
-    val track = MaterialTheme.colorScheme.surfaceVariant
+    val dotColor = if (goalMet) celebrateColor else ink
+    val track = MaterialTheme.colorScheme.outlineVariant
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val labelStyle = MaterialTheme.typography.labelSmall
     val today = (java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_WEEK) + 5) % 7
+    val cellShape = RoundedCornerShape(14.dp)
+
+    // Cells pop in with a staggered bounce — a left-to-right cascade on open.
+    val n = values.size
+    val cellScales = remember(n) {
+        List(n) { androidx.compose.animation.core.Animatable(0f) }
+    }
+    LaunchedEffect(n) {
+        cellScales.forEachIndexed { i, anim ->
+            launch {
+                kotlinx.coroutines.delay(i * 60L)
+                anim.animateTo(
+                    targetValue = 1f,
+                    animationSpec = androidx.compose.animation.core.spring(
+                        dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+                        stiffness = androidx.compose.animation.core.Spring.StiffnessLow,
+                    ),
+                )
+            }
+        }
+    }
+
+    // Haptic pop when today's cell is (or becomes) active — logging a set
+    // today buzzes as the week fills.
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val todayCount = values.getOrNull(today) ?: 0
+    LaunchedEffect(todayCount) {
+        if (todayCount > 0) {
+            haptic.performHapticFeedback(
+                androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress,
+            )
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() },
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(80.dp),
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val n = values.size
-                if (n == 0) return@Canvas
-                val gap = 14f
-                val barWidth = (size.width - gap * (n - 1)) / n
-                val r = CornerRadius(barWidth / 4f, barWidth / 4f)
-                for (i in 0 until n) {
-                    val x = i * (barWidth + gap)
-                    drawRoundRect(
-                        color = track,
-                        topLeft = Offset(x, 0f),
-                        size = Size(barWidth, size.height),
-                        cornerRadius = r,
-                    )
-                    val ratio = values[i] / max.toFloat()
-                    if (ratio > 0f) {
-                        val h = size.height * ratio
-                        drawRoundRect(
-                            color = if (i == today) ink else ink.copy(alpha = 0.5f),
-                            topLeft = Offset(x, size.height - h),
-                            size = Size(barWidth, h),
-                            cornerRadius = r,
+            values.forEachIndexed { i, count ->
+                val filled = count > 0
+                // Intensity floor so a single-set day still reads clearly.
+                val intensity = 0.4f + 0.6f * (count / scaleMax)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .aspectRatio(1f)
+                        .graphicsLayer {
+                            val s = cellScales.getOrNull(i)?.value ?: 1f
+                            scaleX = s
+                            scaleY = s
+                        }
+                        .clip(cellShape)
+                        .background(
+                            if (filled) dotColor.copy(alpha = intensity)
+                            else androidx.compose.ui.graphics.Color.Transparent,
                         )
-                    }
-                }
+                        .then(
+                            when {
+                                i == today -> Modifier.border(2.dp, dotColor, cellShape)
+                                !filled -> Modifier.border(1.dp, track, cellShape)
+                                else -> Modifier
+                            },
+                        ),
+                )
             }
         }
         Row(
@@ -742,11 +828,14 @@ private fun greeting(): String {
 private fun friendlyTime(): String =
     SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
 
-private fun formatVolumeBrief(totals: com.example.fitness_tracker.log.TodayTotals): String {
+private fun formatVolumeBrief(
+    totals: com.example.fitness_tracker.log.TodayTotals,
+    weightKgReps: Double = totals.volume.weightKgReps,
+): String {
     val v = totals.volume
     return when {
-        v.weightKgReps >= 1000 -> "%.1fk".format(v.weightKgReps / 1000.0)
-        v.weightKgReps > 0 -> v.weightKgReps.toInt().toString()
+        weightKgReps >= 1000 -> "%.1fk".format(weightKgReps / 1000.0)
+        weightKgReps > 0 -> weightKgReps.toInt().toString()
         v.durationSec > 0 -> "${v.durationSec / 60}m"
         v.distanceMeters >= 1000 -> "%.1fkm".format(v.distanceMeters / 1000.0)
         v.distanceMeters > 0 -> "${v.distanceMeters}m"

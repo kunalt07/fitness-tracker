@@ -130,6 +130,93 @@ fun BodyWeightSheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+fun FoodQuickAddSheet(
+    consumed: Int,
+    target: Int?,
+    onDismiss: () -> Unit,
+    onOpenDiet: () -> Unit,
+    onSave: (name: String, calories: Int, proteinG: Int) -> Unit,
+) {
+    val sheetState = rememberFullSheetState()
+    var name by rememberSaveable { mutableStateOf("") }
+    var calories by rememberSaveable { mutableStateOf("") }
+    var protein by rememberSaveable { mutableStateOf("") }
+
+    val parsedCalories = calories.toIntOrNull()
+    val parsedProtein = protein.toIntOrNull()
+    val canSave = name.isNotBlank() && parsedCalories != null && parsedCalories > 0
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                text = "Log food",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = if (target != null) "$consumed / $target kcal today"
+                else "$consumed kcal today",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            MinimalTextField(
+                value = name,
+                onValueChange = { name = it.take(60) },
+                label = "Food",
+                placeholder = "Chicken & rice",
+                singleLine = true,
+            )
+            MinimalTextField(
+                value = calories,
+                onValueChange = { v -> calories = v.filter { c -> c.isDigit() }.take(5) },
+                label = "Calories (kcal)",
+                placeholder = "550",
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+            )
+            MinimalTextField(
+                value = protein,
+                onValueChange = { v -> protein = v.filter { c -> c.isDigit() }.take(4) },
+                label = "Protein (g, optional)",
+                placeholder = "40",
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                QuietTextButton(label = "Full diet log", onClick = onOpenDiet)
+                QuietTextButton(label = "Cancel", onClick = onDismiss)
+            }
+            PillCta(
+                label = "Add",
+                enabled = canSave,
+                onClick = {
+                    val cal = parsedCalories ?: return@PillCta
+                    onSave(name.trim(), cal, parsedProtein ?: 0)
+                },
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 fun ReadinessSheet(
     initial: Readiness?,
     onDismiss: () -> Unit,

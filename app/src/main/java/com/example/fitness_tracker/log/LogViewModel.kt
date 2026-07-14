@@ -24,16 +24,20 @@ import com.google.firebase.ai.type.content
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val SESSION_RESUME_WINDOW_MS = 4 * 60 * 60 * 1000L  // 4 hours
 
@@ -76,6 +80,10 @@ class LogViewModel(app: Application) : AndroidViewModel(app) {
     val prSetIds: StateFlow<Set<Long>> =
         repo.prSetIds.map { it.toSet() }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
+
+    /** Emits the exercise name when a just-logged set becomes a new PR. */
+    private val _prCelebration = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val prCelebration = _prCelebration.asSharedFlow()
 
     val templates: StateFlow<List<WorkoutTemplate>> =
         repo.templates.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -138,6 +146,10 @@ class LogViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _restRemainingSec = MutableStateFlow(0)
     val restRemainingSec: StateFlow<Int> = _restRemainingSec.asStateFlow()
+
+    /** Duration the current rest started at — lets the UI draw a progress ring. */
+    private val _restTotalSec = MutableStateFlow(0)
+    val restTotalSec: StateFlow<Int> = _restTotalSec.asStateFlow()
     private var restJob: Job? = null
 
     init {
@@ -382,7 +394,7 @@ class LogViewModel(app: Application) : AndroidViewModel(app) {
     ) {
         val session = _activeSession.value ?: return
         viewModelScope.launch {
-            repo.logSet(
+            val newId = repo.logSet(
                 sessionId = session.id,
                 exerciseId = exerciseId,
                 reps = reps,
@@ -392,6 +404,19 @@ class LogViewModel(app: Application) : AndroidViewModel(app) {
                 now = System.currentTimeMillis(),
             )
             startRest(restSeconds)
+            // If this set becomes the exercise's all-time best, celebrate. The
+            // PR-id query is reactive, so wait (briefly) for it to include the
+            // new row; if it never does, the set wasn't a record.
+            launch {
+                val becamePr = withTimeoutOrNull(2_000) {
+                    repo.prSetIds.first { newId in it }
+                    true
+                } ?: false
+                if (becamePr) {
+                    val name = exercises.value.firstOrNull { it.id == exerciseId }?.name
+                    _prCelebration.emit(name ?: "New PR")
+                }
+            }
         }
     }
 
@@ -458,7 +483,7 @@ class LogViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     suspend fun lastSetFor(exerciseId: Long): LastSet? {
-        val s = repo.lastSetForExercise(exerciseId) ?: return null
+        val s = repo.lastSetForExercise(exerciseId, _activeSession.value?.id ?: -1L) ?: return null
         return LastSet(
             reps = s.reps,
             weightKg = s.weightKg,
@@ -481,6 +506,7 @@ class LogViewModel(app: Application) : AndroidViewModel(app) {
     fun startRest(seconds: Int) {
         cancelRest()
         if (seconds <= 0) return
+        _restTotalSec.value = seconds
         restJob = viewModelScope.launch {
             _restRemainingSec.value = seconds
             while (_restRemainingSec.value > 0) {
@@ -495,6 +521,7 @@ class LogViewModel(app: Application) : AndroidViewModel(app) {
         restJob?.cancel()
         restJob = null
         _restRemainingSec.value = 0
+        _restTotalSec.value = 0
     }
 
     private fun buzz() {

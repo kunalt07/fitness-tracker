@@ -194,6 +194,20 @@ class DietViewModel(app: Application) : AndroidViewModel(app) {
         return t.removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
     }
 
+    /** Quick single-item food log from the Home tile (macros optional). */
+    fun quickAddFood(name: String, calories: Int, proteinG: Int) {
+        if (name.isBlank() || calories <= 0) return
+        viewModelScope.launch {
+            repo.addFood(
+                name = name.trim(),
+                calories = calories,
+                proteinG = proteinG,
+                carbsG = 0,
+                fatG = 0,
+            )
+        }
+    }
+
     /** Log this meal into today's food entries. */
     fun logMeal(meal: Meal) {
         viewModelScope.launch {

@@ -283,8 +283,8 @@ class FitnessRepository(
     suspend fun mostRecentOpenSessionSince(sinceMs: Long): WorkoutSession? =
         sessionDao.mostRecentOpenSince(sinceMs)
 
-    suspend fun lastSetForExercise(exerciseId: Long): SetEntry? =
-        setEntryDao.lastForExercise(exerciseId)
+    suspend fun lastSetForExercise(exerciseId: Long, excludeSessionId: Long = -1L): SetEntry? =
+        setEntryDao.lastForExercise(exerciseId, excludeSessionId)
 
     suspend fun getExercise(id: Long): Exercise? = exerciseDao.getById(id)
 

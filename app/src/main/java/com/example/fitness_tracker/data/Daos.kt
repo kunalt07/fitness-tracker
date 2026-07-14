@@ -83,9 +83,10 @@ interface SetEntryDao {
 
     @Query(
         "SELECT * FROM set_entries WHERE exerciseId = :exerciseId " +
+            "AND sessionId != :excludeSessionId " +
             "ORDER BY performedAt DESC LIMIT 1"
     )
-    suspend fun lastForExercise(exerciseId: Long): SetEntry?
+    suspend fun lastForExercise(exerciseId: Long, excludeSessionId: Long): SetEntry?
 
     @Query("SELECT * FROM set_entries WHERE exerciseId = :exerciseId")
     suspend fun allForExercise(exerciseId: Long): List<SetEntry>
