@@ -1,5 +1,8 @@
 package com.example.fitness_tracker.stats
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.size
@@ -21,8 +24,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -216,6 +221,12 @@ private fun MuscleBalanceBar(tallies: List<MuscleGroupTally>) {
     val ranked = tallies.take(8)
     val colors = ranked.map { muscleGroupColor(it.muscleGroup) }
 
+    val grow = remember { Animatable(0f) }
+    LaunchedEffect(ranked) {
+        grow.snapTo(0f)
+        grow.animateTo(1f, tween(700, easing = FastOutSlowInEasing))
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Box(
             modifier = Modifier
@@ -226,7 +237,7 @@ private fun MuscleBalanceBar(tallies: List<MuscleGroupTally>) {
                 var x = 0f
                 val r = CornerRadius(size.height / 2f, size.height / 2f)
                 ranked.forEachIndexed { i, t ->
-                    val w = size.width * (t.sets / total.toFloat())
+                    val w = size.width * (t.sets / total.toFloat()) * grow.value
                     drawRoundRect(
                         color = colors[i],
                         topLeft = Offset(x, 0f),
@@ -276,6 +287,12 @@ private fun WeeklyBars(values: List<Int>, labels: List<String>) {
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val labelStyle = MaterialTheme.typography.labelMedium
 
+    val grow = remember { Animatable(0f) }
+    LaunchedEffect(values) {
+        grow.snapTo(0f)
+        grow.animateTo(1f, tween(800, easing = FastOutSlowInEasing))
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Box(
             modifier = Modifier
@@ -288,6 +305,7 @@ private fun WeeklyBars(values: List<Int>, labels: List<String>) {
                 val gap = 12f
                 val barWidth = (size.width - gap * (n - 1)) / n
                 val cornerRadius = CornerRadius(barWidth / 4f, barWidth / 4f)
+                val staggerSpan = 0.4f
                 for (i in 0 until n) {
                     val x = i * (barWidth + gap)
                     drawRoundRect(
@@ -298,7 +316,9 @@ private fun WeeklyBars(values: List<Int>, labels: List<String>) {
                     )
                     val ratio = values[i] / max.toFloat()
                     if (ratio > 0f) {
-                        val h = size.height * ratio
+                        val start = if (n > 1) i.toFloat() / (n - 1) * staggerSpan else 0f
+                        val local = ((grow.value - start) / (1f - staggerSpan)).coerceIn(0f, 1f)
+                        val h = size.height * ratio * local
                         drawRoundRect(
                             color = ink,
                             topLeft = Offset(x, size.height - h),
@@ -436,6 +456,12 @@ private fun ProgressChart(points: List<ExerciseSeriesPoint>) {
     val ink = statsAccent.main
     val track = MaterialTheme.colorScheme.surfaceVariant
 
+    val grow = remember { Animatable(0f) }
+    LaunchedEffect(points) {
+        grow.snapTo(0f)
+        grow.animateTo(1f, tween(800, easing = FastOutSlowInEasing))
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -494,19 +520,32 @@ private fun ProgressChart(points: List<ExerciseSeriesPoint>) {
                     cornerRadius = CornerRadius(1f, 1f),
                 )
 
-                // Line segments.
+                // Line segments — traced in up to grow fraction of total length.
                 val coords = points.map(::project)
+                val segLens = (0 until coords.size - 1).map {
+                    (coords[it + 1] - coords[it]).getDistance()
+                }
+                val totalLen = segLens.sum().takeIf { it > 0f } ?: 1f
+                var drawnLen = grow.value * totalLen
                 for (i in 0 until coords.size - 1) {
+                    val segLen = segLens[i]
+                    if (drawnLen <= 0f) break
+                    val frac = (drawnLen / segLen).coerceIn(0f, 1f)
                     drawLine(
                         color = ink,
                         start = coords[i],
-                        end = coords[i + 1],
+                        end = coords[i] + (coords[i + 1] - coords[i]) * frac,
                         strokeWidth = 4f,
                     )
+                    drawnLen -= segLen
                 }
-                // Dots.
-                coords.forEach { c ->
-                    drawCircle(color = ink, radius = 5f, center = c)
+                // Dots — appear once the trace reaches each point.
+                var reached = grow.value * totalLen
+                coords.forEachIndexed { i, c ->
+                    if (i == 0 || reached >= 0f) {
+                        drawCircle(color = ink, radius = 5f, center = c)
+                    }
+                    if (i < segLens.size) reached -= segLens[i]
                 }
             }
         }
