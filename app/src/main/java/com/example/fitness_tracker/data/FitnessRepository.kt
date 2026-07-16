@@ -1,7 +1,13 @@
+@file:OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+
 package com.example.fitness_tracker.data
 
 import android.content.Context
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 
 class FitnessRepository(
     private val exerciseDao: ExerciseDao,
@@ -22,6 +28,19 @@ class FitnessRepository(
     private val mealDao: MealDao,
     private val dietPreferenceDao: DietPreferenceDao,
 ) {
+    /**
+     * Current day key, re-checked every minute so any "today" query rolls over
+     * at midnight even while the process stays warm. distinctUntilChanged means
+     * downstream Room queries only re-subscribe when the day actually changes.
+     * Declared first so the "today" observers below can build off it.
+     */
+    private val dayKeyFlow: Flow<Long> = flow {
+        while (true) {
+            emit(todayKey())
+            delay(60_000L)
+        }
+    }.distinctUntilChanged()
+
     val meals: Flow<List<Meal>> = mealDao.observeAll()
     val dietPreference: Flow<DietPreference?> = dietPreferenceDao.observe()
 
@@ -67,11 +86,11 @@ class FitnessRepository(
         val goal = weightGoalDao.get() ?: return null
         return current.weightKg to goal.targetKg
     }
-    fun observeFoodsForDay(dayKey: Long = todayKey()): Flow<List<FoodEntry>> =
-        foodEntryDao.observeForDay(dayKey)
+    fun observeFoodsForDay(): Flow<List<FoodEntry>> =
+        dayKeyFlow.flatMapLatest { foodEntryDao.observeForDay(it) }
 
-    fun observeMacroTotalsForDay(dayKey: Long = todayKey()): Flow<MacroTotals> =
-        foodEntryDao.observeTotalsForDay(dayKey)
+    fun observeMacroTotalsForDay(): Flow<MacroTotals> =
+        dayKeyFlow.flatMapLatest { foodEntryDao.observeTotalsForDay(it) }
 
     suspend fun addFood(
         name: String,
@@ -144,8 +163,8 @@ class FitnessRepository(
         val current = dailyTrackerDao.getMostRecentBodyWeight() ?: return null
         return formatWeightGoalContext(currentKg = current.weightKg, targetKg = goal.targetKg)
     }
-    fun observeBodyWeightForDay(dayKey: Long = todayKey()): Flow<BodyWeightEntry?> =
-        dailyTrackerDao.observeBodyWeightForDay(dayKey)
+    fun observeBodyWeightForDay(): Flow<BodyWeightEntry?> =
+        dayKeyFlow.flatMapLatest { dailyTrackerDao.observeBodyWeightForDay(it) }
 
     fun observeBodyWeightHistory(): Flow<List<BodyWeightEntry>> =
         dailyTrackerDao.observeBodyWeightHistory()
@@ -156,8 +175,8 @@ class FitnessRepository(
         )
     }
 
-    fun observeReadinessForDay(dayKey: Long = todayKey()): Flow<ReadinessEntry?> =
-        dailyTrackerDao.observeReadinessForDay(dayKey)
+    fun observeReadinessForDay(): Flow<ReadinessEntry?> =
+        dayKeyFlow.flatMapLatest { dailyTrackerDao.observeReadinessForDay(it) }
 
     suspend fun saveReadiness(level: Readiness, now: Long = System.currentTimeMillis()) {
         dailyTrackerDao.upsertReadiness(
@@ -165,8 +184,8 @@ class FitnessRepository(
         )
     }
 
-    fun observeWaterForDay(dayKey: Long = todayKey()): Flow<WaterEntry?> =
-        dailyTrackerDao.observeWaterForDay(dayKey)
+    fun observeWaterForDay(): Flow<WaterEntry?> =
+        dayKeyFlow.flatMapLatest { dailyTrackerDao.observeWaterForDay(it) }
 
     suspend fun setWaterGlasses(glasses: Int) {
         dailyTrackerDao.upsertWater(
@@ -195,7 +214,8 @@ class FitnessRepository(
     val weeklySplit: Flow<List<WeeklySplitDay>> = weeklySplitDao.observeAll()
 
     /** Today's pending plan exercise IDs in order. Persisted; auto-clears on date change. */
-    val pendingPlan: Flow<List<Long>> = pendingPlanDao.observeForDay(todayKey())
+    val pendingPlan: Flow<List<Long>> =
+        dayKeyFlow.flatMapLatest { pendingPlanDao.observeForDay(it) }
 
     suspend fun stagePlan(exerciseIds: List<Long>) {
         val day = todayKey()
@@ -259,9 +279,11 @@ class FitnessRepository(
         if (kg % 1.0 == 0.0) kg.toInt().toString() else "%.1f".format(kg)
 
     suspend fun seedDefaultExercisesIfEmpty() {
-        if (exerciseDao.count() == 0) {
-            exerciseDao.insertAll(DEFAULT_EXERCISES)
-        }
+        // Backfill any default that isn't already present (case-insensitive by
+        // name), so existing installs pick up the full per-muscle-group library.
+        val existing = exerciseDao.allNames().map { it.lowercase() }.toSet()
+        val missing = DEFAULT_EXERCISES.filter { it.name.lowercase() !in existing }
+        if (missing.isNotEmpty()) exerciseDao.insertAll(missing)
     }
 
     suspend fun saveWeeklySplit(rows: List<WeeklySplitDay>) {
@@ -390,6 +412,19 @@ class FitnessRepository(
             )
         }
         return templateId
+    }
+
+    /** Rename a template and replace its exercise list in one shot. */
+    suspend fun updateTemplate(id: Long, name: String, exerciseIds: List<Long>) {
+        templateDao.rename(id, name)
+        templateDao.clearItems(id)
+        if (exerciseIds.isNotEmpty()) {
+            templateDao.insertItems(
+                exerciseIds.distinct().mapIndexed { idx, exId ->
+                    TemplateExercise(templateId = id, exerciseId = exId, position = idx)
+                },
+            )
+        }
     }
 
     suspend fun deleteTemplate(id: Long) = templateDao.delete(id)
@@ -531,18 +566,65 @@ class FitnessRepository(
             }
 
         private val DEFAULT_EXERCISES = listOf(
-            Exercise(name = "Back Squat", muscleGroup = "Legs", kind = ExerciseKind.REPS),
-            Exercise(name = "Deadlift", muscleGroup = "Back", kind = ExerciseKind.REPS),
+            // Chest
             Exercise(name = "Bench Press", muscleGroup = "Chest", kind = ExerciseKind.REPS),
+            Exercise(name = "Incline Bench Press", muscleGroup = "Chest", kind = ExerciseKind.REPS),
+            Exercise(name = "Dumbbell Bench Press", muscleGroup = "Chest", kind = ExerciseKind.REPS),
+            Exercise(name = "Push-Up", muscleGroup = "Chest", kind = ExerciseKind.REPS),
+            Exercise(name = "Chest Fly", muscleGroup = "Chest", kind = ExerciseKind.REPS),
+            Exercise(name = "Cable Crossover", muscleGroup = "Chest", kind = ExerciseKind.REPS),
+            Exercise(name = "Dip", muscleGroup = "Chest", kind = ExerciseKind.REPS),
+            // Triceps
+            Exercise(name = "Tricep Pushdown", muscleGroup = "Triceps", kind = ExerciseKind.REPS),
+            Exercise(name = "Overhead Tricep Extension", muscleGroup = "Triceps", kind = ExerciseKind.REPS),
+            Exercise(name = "Close-Grip Bench Press", muscleGroup = "Triceps", kind = ExerciseKind.REPS),
+            Exercise(name = "Skull Crusher", muscleGroup = "Triceps", kind = ExerciseKind.REPS),
+            Exercise(name = "Tricep Kickback", muscleGroup = "Triceps", kind = ExerciseKind.REPS),
+            // Legs
+            Exercise(name = "Back Squat", muscleGroup = "Legs", kind = ExerciseKind.REPS),
+            Exercise(name = "Front Squat", muscleGroup = "Legs", kind = ExerciseKind.REPS),
+            Exercise(name = "Lunge", muscleGroup = "Legs", kind = ExerciseKind.REPS),
+            Exercise(name = "Leg Press", muscleGroup = "Legs", kind = ExerciseKind.REPS),
+            Exercise(name = "Romanian Deadlift", muscleGroup = "Legs", kind = ExerciseKind.REPS),
+            Exercise(name = "Leg Extension", muscleGroup = "Legs", kind = ExerciseKind.REPS),
+            Exercise(name = "Leg Curl", muscleGroup = "Legs", kind = ExerciseKind.REPS),
+            Exercise(name = "Calf Raise", muscleGroup = "Legs", kind = ExerciseKind.REPS),
+            // Shoulders
             Exercise(name = "Overhead Press", muscleGroup = "Shoulders", kind = ExerciseKind.REPS),
+            Exercise(name = "Dumbbell Shoulder Press", muscleGroup = "Shoulders", kind = ExerciseKind.REPS),
+            Exercise(name = "Lateral Raise", muscleGroup = "Shoulders", kind = ExerciseKind.REPS),
+            Exercise(name = "Front Raise", muscleGroup = "Shoulders", kind = ExerciseKind.REPS),
+            Exercise(name = "Rear Delt Fly", muscleGroup = "Shoulders", kind = ExerciseKind.REPS),
+            Exercise(name = "Arnold Press", muscleGroup = "Shoulders", kind = ExerciseKind.REPS),
+            Exercise(name = "Upright Row", muscleGroup = "Shoulders", kind = ExerciseKind.REPS),
+            // Biceps
+            Exercise(name = "Bicep Curl", muscleGroup = "Biceps", kind = ExerciseKind.REPS),
+            Exercise(name = "Hammer Curl", muscleGroup = "Biceps", kind = ExerciseKind.REPS),
+            Exercise(name = "Preacher Curl", muscleGroup = "Biceps", kind = ExerciseKind.REPS),
+            Exercise(name = "Concentration Curl", muscleGroup = "Biceps", kind = ExerciseKind.REPS),
+            Exercise(name = "Cable Curl", muscleGroup = "Biceps", kind = ExerciseKind.REPS),
+            Exercise(name = "Chin-Up", muscleGroup = "Biceps", kind = ExerciseKind.REPS),
+            // Core
+            Exercise(name = "Plank", muscleGroup = "Core", kind = ExerciseKind.TIME),
+            Exercise(name = "Crunch", muscleGroup = "Core", kind = ExerciseKind.REPS),
+            Exercise(name = "Hanging Leg Raise", muscleGroup = "Core", kind = ExerciseKind.REPS),
+            Exercise(name = "Russian Twist", muscleGroup = "Core", kind = ExerciseKind.REPS),
+            Exercise(name = "Sit-Up", muscleGroup = "Core", kind = ExerciseKind.REPS),
+            Exercise(name = "Bicycle Crunch", muscleGroup = "Core", kind = ExerciseKind.REPS),
+            Exercise(name = "Dead Bug", muscleGroup = "Core", kind = ExerciseKind.REPS),
+            // Back
+            Exercise(name = "Deadlift", muscleGroup = "Back", kind = ExerciseKind.REPS),
             Exercise(name = "Barbell Row", muscleGroup = "Back", kind = ExerciseKind.REPS),
             Exercise(name = "Pull-Up", muscleGroup = "Back", kind = ExerciseKind.REPS),
-            Exercise(name = "Push-Up", muscleGroup = "Chest", kind = ExerciseKind.REPS),
-            Exercise(name = "Lunge", muscleGroup = "Legs", kind = ExerciseKind.REPS),
-            Exercise(name = "Plank", muscleGroup = "Core", kind = ExerciseKind.TIME),
-            Exercise(name = "Bicep Curl", muscleGroup = "Arms", kind = ExerciseKind.REPS),
+            Exercise(name = "Lat Pulldown", muscleGroup = "Back", kind = ExerciseKind.REPS),
+            Exercise(name = "Seated Cable Row", muscleGroup = "Back", kind = ExerciseKind.REPS),
+            Exercise(name = "Face Pull", muscleGroup = "Back", kind = ExerciseKind.REPS),
+            // Cardio
             Exercise(name = "Run", muscleGroup = "Cardio", kind = ExerciseKind.DISTANCE),
             Exercise(name = "Bike", muscleGroup = "Cardio", kind = ExerciseKind.DISTANCE),
+            Exercise(name = "Row", muscleGroup = "Cardio", kind = ExerciseKind.DISTANCE),
+            Exercise(name = "Elliptical", muscleGroup = "Cardio", kind = ExerciseKind.DISTANCE),
+            Exercise(name = "Jump Rope", muscleGroup = "Cardio", kind = ExerciseKind.TIME),
         )
     }
 }

@@ -15,6 +15,9 @@ interface ExerciseDao {
     @Query("SELECT COUNT(*) FROM exercises")
     suspend fun count(): Int
 
+    @Query("SELECT name FROM exercises")
+    suspend fun allNames(): List<String>
+
     @Query("SELECT * FROM exercises WHERE LOWER(name) = LOWER(:name) LIMIT 1")
     suspend fun findByNameCaseInsensitive(name: String): Exercise?
 
@@ -363,6 +366,12 @@ interface TemplateDao {
 
     @Query("DELETE FROM workout_templates WHERE id = :id")
     suspend fun delete(id: Long)
+
+    @Query("UPDATE workout_templates SET name = :name WHERE id = :id")
+    suspend fun rename(id: Long, name: String)
+
+    @Query("DELETE FROM template_exercises WHERE templateId = :templateId")
+    suspend fun clearItems(templateId: Long)
 }
 
 data class TemplateMuscleRow(

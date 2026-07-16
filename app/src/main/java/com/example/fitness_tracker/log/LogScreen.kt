@@ -27,9 +27,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.window.Dialog
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -49,8 +50,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
+import com.example.fitness_tracker.R
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.fitness_tracker.data.Exercise
 import com.example.fitness_tracker.data.ExerciseKind
@@ -84,10 +91,9 @@ fun LogScreen(
     val templates by viewModel.templates.collectAsState()
     val saveTemplatePromptId by viewModel.saveTemplatePrompt.collectAsState()
     val critique by viewModel.critique.collectAsState()
-    val quickLog by viewModel.quickLog.collectAsState()
     val templateMuscle by viewModel.templateMuscleByTemplateId.collectAsState()
     val todayTotals by viewModel.todayTotals.collectAsState()
-    var quickLogOpen by rememberSaveable { mutableStateOf(false) }
+    var chooserMuscle by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbarHost = com.example.fitness_tracker.LocalSnackbarHost.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var sheetMode by rememberSaveable(stateSaver = SheetModeSaver) {
@@ -114,14 +120,22 @@ fun LogScreen(
     val topInset = contentPadding.calculateTopPadding()
     val bottomInset = contentPadding.calculateBottomPadding()
 
+    val idleScroll = rememberScrollState()
     Box(modifier = Modifier.fillMaxSize()) {
-        // Scrollable content fills the entire screen; reserves bottom padding so the
-        // last item isn't permanently hidden behind the floating CTA stack.
+        // Reserves bottom padding so the last item isn't hidden behind the floating
+        // CTA stack. When idle (no session) the content scrolls so the full muscle
+        // grid clears the dock; when active, the inner LazyColumn owns scrolling.
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = topInset)
-                .padding(bottom = bottomInset + 160.dp),
+                // Idle keeps Start inline in the scroll, so it only needs to clear
+                // the nav bar. Active reserves room for the floating dock.
+                .padding(bottom = bottomInset + if (active == null) 112.dp else 160.dp)
+                .then(
+                    if (active == null) Modifier.verticalScroll(idleScroll)
+                    else Modifier,
+                ),
         ) {
         ScreenTitle(if (active == null) "Workout" else "In progress")
         TodayProgressLine(totals = todayTotals)
@@ -133,29 +147,23 @@ fun LogScreen(
             )
         }
 
-        if (active == null && templates.isNotEmpty()) {
-            TemplatesRow(
-                templates = templates,
-                muscleByTemplateId = templateMuscle,
-                onLaunch = { viewModel.startFromTemplate(it.id) },
-                onDelete = { t ->
-                    scope.launch {
-                        val restore = viewModel.deleteTemplateWithUndo(t.id)
-                        if (restore != null) {
-                            com.example.fitness_tracker.postUndoSnackbar(
-                                host = snackbarHost,
-                                scope = scope,
-                                message = "Template deleted",
-                                restore = restore,
-                            )
-                        }
-                    }
-                },
+        if (active == null) {
+            MuscleGroupGrid(
+                selected = chooserMuscle,
+                onSelectMuscleGroup = { chooserMuscle = it },
             )
+            // Start lives inline at the end of the scroll (not floating), so the
+            // grid never tucks behind it.
+            Box(modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
+                PillCta(
+                    label = "Start workout",
+                    onClick = { viewModel.startSession() },
+                )
+            }
         }
 
         when {
-            active == null -> CenteredHint("No session yet.")
+            active == null -> Unit
             sets.isEmpty() -> CenteredHint("Tap “Log set” to begin.")
             else -> {
                 val groups = remember(sets) { groupConsecutiveSets(sets) }
@@ -201,9 +209,10 @@ fun LogScreen(
             }
         }
 
-        // Floating dock — same chrome as the bottom nav: rounded card, surface
-        // color, soft shadow, inset from screen edges. Holds the action row,
-        // optional rest banner, and primary CTA together.
+        // Floating dock — only during an active session. Holds the action row
+        // (repeat / end), optional rest banner, and the Log-set CTA. Idle has
+        // its Start button inline in the scroll instead, so nothing overlays it.
+        if (active != null) {
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -233,15 +242,6 @@ fun LogScreen(
                         if (active != null && sets.isNotEmpty()) {
                             RepeatLastPill(onClick = { viewModel.repeatLastSet() })
                         }
-                        IconButton(
-                            onClick = { quickLogOpen = true },
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.EditNote,
-                                contentDescription = "Quick log",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
                         Spacer(modifier = Modifier.weight(1f))
                         if (active != null) {
                             EndSessionPill(onClick = { viewModel.endSession() })
@@ -260,13 +260,17 @@ fun LogScreen(
                         PillCta(
                             label = if (active == null) "Start workout" else "Log set",
                             onClick = {
-                                if (active == null) viewModel.startSession()
-                                else sheetMode = SheetMode.New(prefillExerciseId = null)
+                                if (active == null) {
+                                    viewModel.startSession()
+                                } else {
+                                    sheetMode = SheetMode.New(prefillExerciseId = null)
+                                }
                             },
                         )
                     }
                 }
             }
+        }
         }
 
         prCelebration?.let { name ->
@@ -285,25 +289,25 @@ fun LogScreen(
         )
     }
 
+    val chooser = chooserMuscle
+    if (chooser != null) {
+        val groupExercises = exercises.filter { it.muscleGroup == chooser }
+        ExerciseChooserSheet(
+            muscle = chooser,
+            exercises = groupExercises,
+            onConfirm = { ids ->
+                // Empty pick = queue the whole group (per the sheet's copy).
+                viewModel.startWorkout(ids.ifEmpty { groupExercises.map { it.id } })
+                chooserMuscle = null
+            },
+            onDismiss = { chooserMuscle = null },
+        )
+    }
+
     if (critique !is com.example.fitness_tracker.UiState.Initial) {
         CritiqueSheet(
             state = critique,
             onDismiss = { viewModel.dismissCritique() },
-        )
-    }
-
-    if (quickLogOpen) {
-        QuickLogSheet(
-            state = quickLog,
-            onParse = { text -> viewModel.parseQuickLog(text) },
-            onConfirm = {
-                viewModel.confirmQuickLog()
-                quickLogOpen = false
-            },
-            onDismiss = {
-                viewModel.dismissQuickLog()
-                quickLogOpen = false
-            },
         )
     }
 
@@ -950,35 +954,212 @@ internal fun formatSetSummary(set: SetWithExerciseRow): String = when (set.exerc
     ExerciseKind.DISTANCE -> "${set.distanceMeters} m"
 }
 
+private data class MuscleCardSpec(val name: String, val image: Int)
+
+private val MUSCLE_CARDS = listOf(
+    MuscleCardSpec("Chest", R.drawable.chest),
+    MuscleCardSpec("Triceps", R.drawable.triceps),
+    MuscleCardSpec("Legs", R.drawable.legs),
+    MuscleCardSpec("Shoulders", R.drawable.shoulders),
+    MuscleCardSpec("Biceps", R.drawable.biceps),
+    MuscleCardSpec("Core", R.drawable.core),
+)
+
+private val BACK_CARD = MuscleCardSpec("Back", R.drawable.back)
+
 @Composable
-private fun TemplatesRow(
-    templates: List<WorkoutTemplate>,
-    muscleByTemplateId: Map<Long, String>,
-    onLaunch: (WorkoutTemplate) -> Unit,
-    onDelete: (WorkoutTemplate) -> Unit,
+private fun MuscleGroupGrid(
+    selected: String?,
+    onSelectMuscleGroup: (String) -> Unit,
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 24.dp)
             .padding(bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(
-            "Quick start",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 24.dp),
+            "MUSCLE GROUPS",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            letterSpacing = 1.sp,
+            color = Color(0xFF888888),
         )
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        MUSCLE_CARDS.chunked(2).forEach { rowCards ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                rowCards.forEach { card ->
+                    MuscleCard(
+                        spec = card,
+                        selected = card.name == selected,
+                        onClick = { onSelectMuscleGroup(card.name) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+        // 7th card — Back, spanning the full width.
+        MuscleCard(
+            spec = BACK_CARD,
+            selected = BACK_CARD.name == selected,
+            onClick = { onSelectMuscleGroup(BACK_CARD.name) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun MuscleCard(
+    spec: MuscleCardSpec,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val borderColor = if (selected) Color(0xFF7B6FD4) else Color(0xFF2A2A2A)
+    val imageAlpha = if (selected) 0.4f else 0.18f
+    Box(
+        modifier = modifier
+            .height(110.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .border(1.5.dp, borderColor, RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(spec.image),
+            contentDescription = null,
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            alpha = imageAlpha,
+            modifier = Modifier.matchParentSize(),
+        )
+        // Dark gradient overlay — bottom (dark) to top (transparent).
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    androidx.compose.ui.graphics.Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color(0xFF0D0D0D).copy(alpha = 0.55f),
+                        ),
+                    ),
+                ),
+        )
+        Text(
+            spec.name,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.04.em,
+            color = Color.White,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExerciseChooserSheet(
+    muscle: String,
+    exercises: List<Exercise>,
+    onConfirm: (List<Long>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberFullSheetState()
+    val chosen = remember { mutableStateListOf<Long>() }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            items(templates, key = { it.id }) { t ->
-                TemplateChip(
-                    template = t,
-                    muscleGroup = muscleByTemplateId[t.id],
-                    onTap = { onLaunch(t) },
-                    onLongPress = { onDelete(t) },
+            Text(
+                "$muscle exercises",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            if (exercises.isEmpty()) {
+                Text(
+                    "No $muscle exercises yet. Starting will open an empty session you can log into.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Text(
+                    "Pick the ones you’ll do — they’ll show up in your log. Leave all unchecked to queue the whole group.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                exercises.forEach { ex ->
+                    val isChosen = ex.id in chosen
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                if (isChosen) chosen.remove(ex.id) else chosen.add(ex.id)
+                            }
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(22.dp)
+                                .clip(RoundedCornerShape(50))
+                                .background(
+                                    if (isChosen) Color(0xFF7B6FD4) else Color.Transparent,
+                                )
+                                .border(
+                                    1.5.dp,
+                                    if (isChosen) Color(0xFF7B6FD4)
+                                    else MaterialTheme.colorScheme.outline,
+                                    RoundedCornerShape(50),
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (isChosen) {
+                                Icon(
+                                    imageVector = Icons.Filled.Check,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                            }
+                        }
+                        Text(
+                            ex.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 12.dp),
+                        )
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                QuietTextButton(label = "Cancel", onClick = onDismiss)
+                Spacer(modifier = Modifier.padding(horizontal = 4.dp))
+                PillCta(
+                    label = if (chosen.isEmpty()) "Start workout"
+                    else "Add ${chosen.size} to log",
+                    onClick = { onConfirm(chosen.toList()) },
+                    modifier = Modifier.fillMaxWidth(0.5f),
                 )
             }
         }
@@ -1240,51 +1421,6 @@ private fun ExerciseField(name: String?, onTap: () -> Unit) {
                 color = if (name == null) MaterialTheme.colorScheme.onSurfaceVariant
                 else MaterialTheme.colorScheme.onSurface,
             )
-        }
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun TemplateChip(
-    template: WorkoutTemplate,
-    muscleGroup: String?,
-    onTap: () -> Unit,
-    onLongPress: () -> Unit,
-) {
-    val tint = muscleGroup?.let { com.example.fitness_tracker.ui.theme.muscleGroupColor(it) }
-    val container = tint?.copy(alpha = 0.16f) ?: MaterialTheme.colorScheme.surfaceVariant
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = container,
-        modifier = Modifier.combinedClickable(
-            onClick = onTap,
-            onLongClick = onLongPress,
-        ),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (tint != null) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .background(tint, shape = androidx.compose.foundation.shape.CircleShape),
-                )
-                Text(
-                    template.name,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(start = 8.dp),
-                )
-            } else {
-                Text(
-                    template.name,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
         }
     }
 }

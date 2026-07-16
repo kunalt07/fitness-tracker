@@ -30,8 +30,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -93,20 +95,34 @@ class LogViewModel(app: Application) : AndroidViewModel(app) {
             .map { rows -> rows.mapNotNull { r -> r.muscleGroup?.let { r.templateId to it } }.toMap() }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
 
+    /**
+     * Emits the current start-of-day, re-checked every minute so the "today"
+     * window rolls over at midnight even while the process stays warm.
+     * distinctUntilChanged means the downstream Room queries only re-subscribe
+     * when the day actually changes, not every tick.
+     */
+    private val dayStart = flow {
+        while (true) {
+            emit(startOfTodayMs())
+            delay(60_000L)
+        }
+    }.distinctUntilChanged()
+
     /** Live totals for sets logged today (across all sessions of the day). */
-    val todayTotals: StateFlow<TodayTotals> = run {
-        val midnight = startOfTodayMs()
-        combine(
-            repo.observeVolumeSince(midnight),
-            repo.observeDistinctExercisesSince(midnight),
-        ) { vol, distinct ->
-            TodayTotals(
-                sets = vol.totalSets,
-                exercises = distinct,
-                volume = vol,
-            )
+    @Suppress("OPT_IN_USAGE")
+    val todayTotals: StateFlow<TodayTotals> =
+        dayStart.flatMapLatest { midnight ->
+            combine(
+                repo.observeVolumeSince(midnight),
+                repo.observeDistinctExercisesSince(midnight),
+            ) { vol, distinct ->
+                TodayTotals(
+                    sets = vol.totalSets,
+                    exercises = distinct,
+                    volume = vol,
+                )
+            }
         }.stateIn(viewModelScope, SharingStarted.Eagerly, TodayTotals())
-    }
 
     private val _saveTemplatePrompt = MutableStateFlow<Long?>(null)
     val saveTemplatePrompt: StateFlow<Long?> = _saveTemplatePrompt.asStateFlow()
@@ -372,6 +388,18 @@ class LogViewModel(app: Application) : AndroidViewModel(app) {
         _saveTemplatePrompt.value = null
     }
 
+    /**
+     * Start today's workout. If exerciseIds is non-empty they're queued into the
+     * pending plan (the init collector auto-starts the session); otherwise a plain
+     * empty session begins.
+     */
+    fun startWorkout(exerciseIds: List<Long>) {
+        viewModelScope.launch {
+            if (exerciseIds.isNotEmpty()) repo.stagePlan(exerciseIds)
+            else startSession()
+        }
+    }
+
     fun startFromTemplate(templateId: Long) {
         viewModelScope.launch {
             val ids = repo.exerciseIdsForTemplate(templateId)
@@ -383,6 +411,26 @@ class LogViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteTemplate(id: Long) {
         viewModelScope.launch { repo.deleteTemplate(id) }
     }
+
+    /** Create a new reusable workout type from a name + ordered exercises. */
+    fun createTemplate(name: String, exerciseIds: List<Long>) {
+        val clean = name.trim()
+        if (clean.isBlank() || exerciseIds.isEmpty()) return
+        viewModelScope.launch {
+            repo.saveTemplate(clean, exerciseIds, System.currentTimeMillis())
+        }
+    }
+
+    /** Rename + replace the exercises of an existing workout type. */
+    fun updateTemplate(id: Long, name: String, exerciseIds: List<Long>) {
+        val clean = name.trim()
+        if (clean.isBlank() || exerciseIds.isEmpty()) return
+        viewModelScope.launch { repo.updateTemplate(id, clean, exerciseIds) }
+    }
+
+    /** Current exercise ids for a template, in order — used to seed the editor. */
+    suspend fun templateExerciseIds(id: Long): List<Long> =
+        repo.exerciseIdsForTemplate(id)
 
     fun logSet(
         exerciseId: Long,
