@@ -99,7 +99,18 @@ class DietViewModel(app: Application) : AndroidViewModel(app) {
                 val existingNames = allMeals.value
                     .filter { it.category == category }
                     .map { it.name }
-                val prompt = buildPrompt(category, pref, n, existingNames)
+                // Goal-/training-aware context the app already has: weight goal,
+                // today's nutrition budget, and 14-day training tallies. Each is
+                // nullable — a fresh user with no data gets clean generic meals.
+                val weightGoal = repo.weightGoalContext()
+                val nutrition = repo.nutritionContext()
+                val training = repo.summarizeRecentHistory()
+                val prompt = buildPrompt(
+                    category, pref, n, existingNames,
+                    weightGoal = weightGoal,
+                    nutrition = nutrition,
+                    training = training,
+                )
                 val resp = generativeModel.generateContent(content { text(prompt) })
                 val raw = resp.text?.trim().orEmpty()
                 val parsed = parseMealsJson(raw, category, pref)
@@ -123,12 +134,37 @@ class DietViewModel(app: Application) : AndroidViewModel(app) {
         diet: DietType,
         n: Int,
         existingNames: List<String>,
+        weightGoal: String? = null,
+        nutrition: String? = null,
+        training: String? = null,
     ): String = buildString {
         appendLine(
             "You are a Registered Dietitian. Suggest $n meal ideas for the " +
                 "'${category.label}' category that fit a '${diet.label}' diet.",
         )
         appendLine()
+
+        // Only emit the goal-aware blocks when we actually have a signal, so a
+        // fresh user (no goal / no logs / no training) still gets clean generic
+        // suggestions instead of empty scaffolding.
+        val signals = listOfNotNull(weightGoal, nutrition, training)
+        if (signals.isNotEmpty()) {
+            appendLine("USER CONTEXT — tailor the meals to this:")
+            signals.forEach { appendLine("- $it") }
+            appendLine()
+            appendLine("OPTIMIZE FOR THE GOAL:")
+            if (weightGoal != null) {
+                appendLine("- Bias macros toward the weight goal: if bulking, higher protein with a modest calorie surplus; if cutting, higher protein with a modest deficit.")
+            }
+            if (training != null) {
+                appendLine("- Favor protein and carbs that support recovery for the most-recently-trained muscle groups shown above.")
+            }
+            if (nutrition != null) {
+                appendLine("- Size portions to fill the REMAINING calorie/protein budget for today, not exceed it.")
+            }
+            appendLine()
+        }
+
         appendLine("RULES:")
         appendLine("- Different from the user's current list. Avoid these names: ${existingNames.joinToString(", ")}")
         appendLine("- Realistic portions, common ingredients.")
