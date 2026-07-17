@@ -3,7 +3,8 @@
 ## Project basics
 - **Path**: `/Users/kunaltigga/AndroidStudioProjects/FitnessTracker`
 - **Repo**: `https://github.com/kunalt07/fitness-tracker` (public)
-- **Last commit on `main`**: `16352f4` — "Animate Stats charts on entry — sweep, grow, trace" (working tree clean, all pushed to `origin/main`)
+- **Last commit on `main`**: `473f780` — "Roadmap: mark Diet day plan + Home food overhaul done" (working tree clean; see Recent commit history below)
+- **Docs live in `docs/`**: `CONTEXT.md` (this — current state), `ROADMAP.md` (queue/done/won't-do), `PLAN.md` (shipped feature map), `DECISIONS.md` (why-log). Plan in VS Code / Claude Code; implement in Android Studio (same repo, shared files).
 - **History rewritten**: `Co-Authored-By: Claude` trailer scrubbed from all 12 commits via `git filter-branch` + force-push. SHAs changed. Safety net at `refs/original/refs/heads/main` (local only). Do NOT re-add the trailer on future commits — user does not want Claude as contributor.
 - **App name**: Vector (was Fitness Tracker)
 - **Package**: `com.example.fitness_tracker` (intentionally NOT renamed; stays for Firebase compat)
@@ -83,14 +84,24 @@
 - Reads `pending_plan` count: "N exercises queued for today" caption + CTA becomes "Start planned workout"
 - Quiet secondary "Plan today with AI" link when nothing queued and no session running (in-app discovery path to AI generator)
 
-## Feature backlog (user's priority order)
-1. ✅ **Onboarding flow** — done (`9a06a10`)
-2. ✅ **Backup / restore** — done (`9457cf3`)
-3. ✅ **"Last time" data in set-entry sheet** — done (shipped in `48c0883`/now `e2ca16f`; Log shows previous session's reps × weight, excludes current session).
+## Diet day plan + Home food logging (`45c6c1a`)
+- **Diet "Suggest meals"**: floating button (bottom-right, accent-colored, clears nav) → `DietViewModel.suggestDayPlan()`. AI returns 5 meals spanning a MIX of dietary types, category chosen freely, calories summed to the goal (remaining budget if food logged), tuned by weight goal + workout consistency. Shown as pills (diet-color dot, name + kcal·protein) + a Total line; tap a pill → prep sheet (ingredients + steps).
+- **Signals fed to the prompt** (all nullable, block emitted only when present): `weightGoalContext`, `calorieBudgetContext` (NEW — always surfaces goal + remaining, unlike `nutritionContext`), `summarizeRecentHistory`, `workoutConsistencyContext` (NEW — trained-days-in-14 + streak, from `setEntryDao.allSetTimestamps()`).
+- **Model**: `data/PlannedMeal.kt` (`@Serializable`; category, dietType, name, description, calories, proteinG, ingredients, steps). Not a Room entity.
+- **Persistence + sharing**: day plan saved per-day as JSON in the (otherwise-dead) `cached_diet_plan` table, `direction = "DAY_PLAN"` — NO schema migration. `FitnessRepository` (singleton) exposes `dayPlan: StateFlow`; both Diet and Home ViewModels share it. Diet VM keeps only a `PlanStatus` (Idle/Loading/Error); the meals list is the repo flow.
+- **Home Food sheet** (`home/DailySheets.kt` `FoodQuickAddSheet`): tap-to-log side-scroll suggestion pills (diet-colored); **name autocomplete** from menu + day-plan + past logs (`DietViewModel.foodSuggestions`) with an **"Ask AI"** fallback (`estimateFood`) that estimates macros for any food; **removable** "logged today" list (`deleteFoodEntry`); **over-goal confirm popup** (AlertDialog) when an add would exceed the calorie goal.
 
-**Backlog now empty.** No open items. Ask user for next direction.
+## Feature backlog
+See `ROADMAP.md` for the live queue / done / won't-do. As of `473f780` the "Now" section holds the next planned item; ask the user before starting if unsure.
 
-## Recent commit history (all on main, all pushed — SHAs post-scrub)
+## Recent commit history (all on main; SHAs post-scrub)
+- `473f780` — Roadmap: mark Diet day plan + Home food overhaul done
+- `45c6c1a` — Diet day plan + Home food logging overhaul
+- `1aa853c` — Diet AI: goal- and training-aware meal suggestions
+- `4e711f0` — Motion polish: button press scale, chip bounce, nav fade-through
+- `1e0d7c6` — Fill Log muscle grid to screen height instead of scrolling
+- `f007a7d` — Move planning docs into docs/, add PLAN and DECISIONS
+- `21aa4fc` — Muscle-group Log picker + fix frozen daily reset
 - `16352f4` — Animate Stats charts on entry — sweep, grow, trace
 - `e2ca16f` — Fun animations + quick-logging polish (Home streak flame, dot-grid heatmap, count-up stats, Food quick-add; Log "last time" hint, PR confetti + haptic, rest-timer ring)
 - `b9ab719` — Inline PR badge on Log set rows
@@ -119,6 +130,8 @@
 - Floating dock has no card chrome — controls float over scroll content. Quick log pencil icon may be hard to read against busy content (no individual backdrop).
 
 ## Session-resume cues
-- Working tree clean at `16352f4`. Backlog empty — if user says "continue", ask for direction (recent focus: animations). Candidate next animation work not yet done: NavHost tab-switch content transitions; new micro-interactions (button press scale, chip select bounce).
+- Working tree clean at `473f780`, pushed to `origin/main`. Recent focus: Diet day plan + Home food logging. For next direction, read `ROADMAP.md` "Now".
+- **Verify smoothness on RELEASE builds** — debug Compose is janky (proven repeatedly this project); nav/animation lag in debug is expected, gone in release. adb: `$HOME/Library/Android/sdk/platform-tools/adb`; device `2B121JEGR01006`. Release sig ≠ debug → uninstall before installing release (wipes data).
 - Keystore + password are critical — flag for off-machine backup if user asks about distribution.
 - User tends to ask for "blur"/"glass" — be honest real blur needs Haze; frame the tradeoff cleanly.
+- AI-meal features share `FitnessRepository` singleton state across Diet/Home — keep new cross-screen data there, not per-VM.
