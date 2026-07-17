@@ -3,6 +3,9 @@ package com.example.fitness_tracker
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -135,6 +138,19 @@ fun FitnessApp() {
             NavHost(
                 navController = navController,
                 startDestination = TopLevelDest.Home.route,
+                // Fade-through between tabs: incoming fades in + scales up from 0.94,
+                // outgoing quickly fades out. Non-directional (no slide), so no
+                // from/to index tracking — matches the app's calm, minimal motion.
+                enterTransition = {
+                    fadeIn(tween(220, easing = FastOutSlowInEasing)) +
+                        scaleIn(tween(220, easing = FastOutSlowInEasing), initialScale = 0.94f)
+                },
+                exitTransition = { fadeOut(tween(150, easing = FastOutSlowInEasing)) },
+                popEnterTransition = {
+                    fadeIn(tween(220, easing = FastOutSlowInEasing)) +
+                        scaleIn(tween(220, easing = FastOutSlowInEasing), initialScale = 0.94f)
+                },
+                popExitTransition = { fadeOut(tween(150, easing = FastOutSlowInEasing)) },
             ) {
                 composable(TopLevelDest.Home.route) {
                     com.example.fitness_tracker.home.HomeScreen(

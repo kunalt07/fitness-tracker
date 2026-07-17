@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -33,8 +32,7 @@ import androidx.compose.material.icons.outlined.Restaurant
 import androidx.compose.material.icons.outlined.Scale
 import androidx.compose.material.icons.outlined.SentimentSatisfied
 import androidx.compose.material.icons.outlined.WaterDrop
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import com.example.fitness_tracker.ui.PillCta
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -428,22 +426,11 @@ private fun TodayHeroCard(
                 todayTotals.sets > 0 -> "Resume workout"
                 else -> "Start workout"
             }
-            Button(
+            PillCta(
+                label = ctaLabel,
                 onClick = onPrimaryAction,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(50),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                ),
-            ) {
-                Text(
-                    text = ctaLabel,
-                    style = MaterialTheme.typography.titleMedium,
-                )
-            }
+                textStyle = MaterialTheme.typography.titleMedium,
+            )
 
             // Secondary CTA — only when nothing is queued and no session is
             // running. Points the user at the Plan tab to AI-generate one;

@@ -1,5 +1,11 @@
 package com.example.fitness_tracker.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -23,9 +29,13 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 
 /**
@@ -108,6 +118,27 @@ fun MinimalTextField(
     )
 }
 
+/**
+ * Shared press-feedback: dips to [PRESS_SCALE] while held, springs back on release.
+ * Draw-only ([graphicsLayer]) so it never triggers relayout. Wire the returned
+ * source into the button's `interactionSource` and apply [Modifier.graphicsLayer].
+ */
+private const val PRESS_SCALE = 0.96f
+
+@Composable
+private fun rememberPressScale(source: MutableInteractionSource): Float {
+    val pressed by source.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) PRESS_SCALE else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "pressScale",
+    )
+    return scale
+}
+
 @Composable
 fun PillCta(
     label: String,
@@ -115,11 +146,16 @@ fun PillCta(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     elevated: Boolean = false,
+    textStyle: androidx.compose.ui.text.TextStyle? = null,
 ) {
+    val source = remember { MutableInteractionSource() }
+    val scale = rememberPressScale(source)
     Button(
         onClick = onClick,
         enabled = enabled,
+        interactionSource = source,
         modifier = modifier
+            .graphicsLayer { scaleX = scale; scaleY = scale }
             .fillMaxWidth()
             .height(52.dp)
             .let {
@@ -135,7 +171,7 @@ fun PillCta(
             contentColor = MaterialTheme.colorScheme.onPrimary,
         ),
     ) {
-        Text(label, style = MaterialTheme.typography.labelLarge)
+        Text(label, style = textStyle ?: MaterialTheme.typography.labelLarge)
     }
 }
 
@@ -162,10 +198,15 @@ fun PillCtaSecondary(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val source = remember { MutableInteractionSource() }
+    val scale = rememberPressScale(source)
     OutlinedButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.height(52.dp),
+        interactionSource = source,
+        modifier = modifier
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .height(52.dp),
         shape = RoundedCornerShape(50),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         colors = ButtonDefaults.outlinedButtonColors(
@@ -182,8 +223,12 @@ fun QuietTextButton(
     label: String,
     onClick: () -> Unit,
 ) {
+    val source = remember { MutableInteractionSource() }
+    val scale = rememberPressScale(source)
     TextButton(
         onClick = onClick,
+        interactionSource = source,
+        modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale },
         contentPadding = ButtonDefaults.TextButtonContentPadding,
     ) {
         Text(
@@ -200,7 +245,22 @@ fun PillChip(
     label: String,
     onClick: () -> Unit,
 ) {
+    // Pop-and-settle on select: snap up, then springy bounce back to rest.
+    val scale = remember { Animatable(1f) }
+    LaunchedEffect(selected) {
+        if (selected) {
+            scale.snapTo(1.08f)
+            scale.animateTo(
+                targetValue = 1f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMedium,
+                ),
+            )
+        }
+    }
     FilterChip(
+        modifier = Modifier.graphicsLayer { scaleX = scale.value; scaleY = scale.value },
         selected = selected,
         onClick = onClick,
         label = {
