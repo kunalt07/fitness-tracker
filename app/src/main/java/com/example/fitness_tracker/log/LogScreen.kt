@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -120,7 +122,6 @@ fun LogScreen(
     val topInset = contentPadding.calculateTopPadding()
     val bottomInset = contentPadding.calculateBottomPadding()
 
-    val idleScroll = rememberScrollState()
     Box(modifier = Modifier.fillMaxSize()) {
         // Reserves bottom padding so the last item isn't hidden behind the floating
         // CTA stack. When idle (no session) the content scrolls so the full muscle
@@ -131,11 +132,7 @@ fun LogScreen(
                 .padding(top = topInset)
                 // Idle keeps Start inline in the scroll, so it only needs to clear
                 // the nav bar. Active reserves room for the floating dock.
-                .padding(bottom = bottomInset + if (active == null) 112.dp else 160.dp)
-                .then(
-                    if (active == null) Modifier.verticalScroll(idleScroll)
-                    else Modifier,
-                ),
+                .padding(bottom = bottomInset + if (active == null) 112.dp else 160.dp),
         ) {
         ScreenTitle(if (active == null) "Workout" else "In progress")
         TodayProgressLine(totals = todayTotals)
@@ -151,6 +148,7 @@ fun LogScreen(
             MuscleGroupGrid(
                 selected = chooserMuscle,
                 onSelectMuscleGroup = { chooserMuscle = it },
+                modifier = Modifier.weight(1f),
             )
             // Start lives inline at the end of the scroll (not floating), so the
             // grid never tucks behind it.
@@ -971,9 +969,10 @@ private val BACK_CARD = MuscleCardSpec("Back", R.drawable.back)
 private fun MuscleGroupGrid(
     selected: String?,
     onSelectMuscleGroup: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp)
             .padding(bottom = 16.dp),
@@ -988,7 +987,7 @@ private fun MuscleGroupGrid(
         )
         MUSCLE_CARDS.chunked(2).forEach { rowCards ->
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 rowCards.forEach { card ->
@@ -996,7 +995,7 @@ private fun MuscleGroupGrid(
                         spec = card,
                         selected = card.name == selected,
                         onClick = { onSelectMuscleGroup(card.name) },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
                     )
                 }
             }
@@ -1006,7 +1005,7 @@ private fun MuscleGroupGrid(
             spec = BACK_CARD,
             selected = BACK_CARD.name == selected,
             onClick = { onSelectMuscleGroup(BACK_CARD.name) },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().weight(1f),
         )
     }
 }
@@ -1022,7 +1021,7 @@ private fun MuscleCard(
     val imageAlpha = if (selected) 0.4f else 0.18f
     Box(
         modifier = modifier
-            .height(110.dp)
+            .heightIn(min = 96.dp)
             .clip(RoundedCornerShape(16.dp))
             .border(1.5.dp, borderColor, RoundedCornerShape(16.dp))
             .clickable(onClick = onClick),
