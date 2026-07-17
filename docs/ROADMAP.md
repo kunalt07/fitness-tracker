@@ -8,13 +8,13 @@ as the "current state of the world"; keep this as "what's next / what's decided 
 _Empty — add the next thing here._
 
 ## Next (queued, not started)
-- _e.g._ NavHost tab-switch content transitions
-- _e.g._ Micro-interactions: button press scale, chip select bounce
+- Directional nav slide tied to swipe direction (needs from/to index tracking) — only if fade-through feels flat
 
 ## Later / ideas (unranked)
 - _park half-formed ideas here so they aren't lost_
 
 ## Done
+- Motion polish: button press scale + chip select bounce + nav fade-through — `4e711f0` (verified smooth on release; debug build was janky)
 - Fill Log muscle grid to screen height — `1e0d7c6`
 - Muscle-group Log picker + fixed frozen daily reset — `21aa4fc`
 - Animate Stats charts on entry — `16352f4`
