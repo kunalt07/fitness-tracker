@@ -97,6 +97,9 @@ interface SetEntryDao {
     @Query("SELECT performedAt FROM set_entries ORDER BY performedAt ASC")
     fun observeAllSetTimestamps(): Flow<List<Long>>
 
+    @Query("SELECT performedAt FROM set_entries ORDER BY performedAt ASC")
+    suspend fun allSetTimestamps(): List<Long>
+
     @Query(
         "SELECT s.*, e.name AS exerciseName, e.kind AS exerciseKind, e.muscleGroup AS muscleGroup " +
             "FROM set_entries s INNER JOIN exercises e ON e.id = s.exerciseId " +
@@ -134,6 +137,10 @@ interface PendingPlanDao {
 interface FoodEntryDao {
     @Query("SELECT * FROM food_entry WHERE dayKey = :dayKey ORDER BY loggedAt DESC")
     fun observeForDay(dayKey: Long): Flow<List<FoodEntry>>
+
+    /** One row per distinct food name, most-recently-logged first — for name autocomplete. */
+    @Query("SELECT * FROM food_entry GROUP BY name ORDER BY MAX(loggedAt) DESC LIMIT 50")
+    fun observeRecentDistinctFoods(): Flow<List<FoodEntry>>
 
     @Query(
         "SELECT " +

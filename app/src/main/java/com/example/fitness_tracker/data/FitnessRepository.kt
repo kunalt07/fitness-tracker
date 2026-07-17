@@ -5,9 +5,14 @@ package com.example.fitness_tracker.data
 import android.content.Context
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 class FitnessRepository(
     private val exerciseDao: ExerciseDao,
@@ -77,6 +82,36 @@ class FitnessRepository(
 
     suspend fun pruneStaleDietPlan() = cachedDietPlanDao.clearStale(todayKey())
 
+    // --- AI "what to eat" day plan: shared across screens (Diet generates, Home
+    // reads) via this singleton. Persisted per-day as JSON in `cached_diet_plan`
+    // (direction = DAY_PLAN) so it survives navigation and app restart. ---
+    private val dayPlanJson = Json { ignoreUnknownKeys = true }
+    private val _dayPlan = MutableStateFlow<List<PlannedMeal>>(emptyList())
+    val dayPlan: StateFlow<List<PlannedMeal>> = _dayPlan.asStateFlow()
+
+    /** Load today's persisted day plan into [dayPlan]. Safe to call repeatedly. */
+    suspend fun loadDayPlan() {
+        val cached = cachedDietPlanDao.getForDay(todayKey())
+        _dayPlan.value = if (cached?.direction == DAY_PLAN_DIRECTION) {
+            runCatching { dayPlanJson.decodeFromString<List<PlannedMeal>>(cached.markdown) }
+                .getOrDefault(emptyList())
+        } else {
+            emptyList()
+        }
+    }
+
+    suspend fun saveDayPlan(meals: List<PlannedMeal>) {
+        cachedDietPlanDao.upsert(
+            CachedDietPlan(
+                dayKey = todayKey(),
+                direction = DAY_PLAN_DIRECTION,
+                markdown = dayPlanJson.encodeToString(meals),
+                createdAt = System.currentTimeMillis(),
+            ),
+        )
+        _dayPlan.value = meals
+    }
+
     /**
      * Pulls current weight + target if both exist; null otherwise.
      * Used to derive the diet direction (cut/bulk/maintain).
@@ -88,6 +123,9 @@ class FitnessRepository(
     }
     fun observeFoodsForDay(): Flow<List<FoodEntry>> =
         dayKeyFlow.flatMapLatest { foodEntryDao.observeForDay(it) }
+
+    /** Distinct foods logged before, most recent first — for name autocomplete. */
+    val recentDistinctFoods: Flow<List<FoodEntry>> = foodEntryDao.observeRecentDistinctFoods()
 
     fun observeMacroTotalsForDay(): Flow<MacroTotals> =
         dayKeyFlow.flatMapLatest { foodEntryDao.observeTotalsForDay(it) }
@@ -142,6 +180,23 @@ class FitnessRepository(
             "Today's nutrition: ${totals.calories} kcal (${totals.protein}g protein)."
         }
     }
+    /**
+     * Calorie-goal signal for AI meal prompts. Unlike [nutritionContext] this always
+     * surfaces the goal (even with nothing logged yet) plus the remaining budget, so
+     * suggestions can be sized to complete the day's target. Null if no goal is set.
+     */
+    suspend fun calorieBudgetContext(): String? {
+        val goal = calorieGoalDao.get() ?: return null
+        val totals = foodEntryDao.getTotalsForDay(todayKey())
+        val remaining = (goal.targetCalories - totals.calories).coerceAtLeast(0)
+        return buildString {
+            append("Daily calorie goal: ${goal.targetCalories} kcal")
+            if (totals.calories > 0) append(" (${totals.calories} logged, $remaining remaining today)")
+            goal.proteinTargetG?.let { append(". Protein target: ${it}g") }
+            append(".")
+        }
+    }
+
     val weightGoal: Flow<WeightGoal?> = weightGoalDao.observe()
 
     suspend fun getWeightGoal(): WeightGoal? = weightGoalDao.get()
@@ -209,6 +264,36 @@ class FitnessRepository(
     val exercises: Flow<List<Exercise>> = exerciseDao.observeAll()
     val sessions: Flow<List<WorkoutSession>> = sessionDao.observeAll()
     val allSetTimestamps: Flow<List<Long>> = setEntryDao.observeAllSetTimestamps()
+
+    /**
+     * One-line workout-consistency signal for AI prompts: distinct training days in
+     * the last 14 plus the current daily streak. Null if no set has ever been logged.
+     */
+    suspend fun workoutConsistencyContext(now: Long = System.currentTimeMillis()): String? {
+        val timestamps = setEntryDao.allSetTimestamps()
+        if (timestamps.isEmpty()) return null
+        val dayMs = 24L * 60 * 60 * 1000
+        fun localDay(t: Long): Long {
+            val cal = java.util.Calendar.getInstance()
+            cal.timeInMillis = t
+            cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+            cal.set(java.util.Calendar.MINUTE, 0)
+            cal.set(java.util.Calendar.SECOND, 0)
+            cal.set(java.util.Calendar.MILLISECOND, 0)
+            return cal.timeInMillis / dayMs
+        }
+        val trainedDays = timestamps.map { localDay(it) }.toSet()
+        val today = localDay(now)
+        val last14 = (0..13).count { (today - it) in trainedDays }
+        var streak = 0
+        var probe = if (today in trainedDays) today else today - 1
+        while (probe in trainedDays) { streak++; probe-- }
+        return buildString {
+            append("Workout consistency: trained $last14 of the last 14 days")
+            if (streak > 0) append(" (current streak $streak day${if (streak == 1) "" else "s"})")
+            append(".")
+        }
+    }
     val templates: Flow<List<WorkoutTemplate>> = templateDao.observeAll()
     val templateDominantGroups: Flow<List<TemplateMuscleRow>> = templateDao.observeDominantGroups()
     val weeklySplit: Flow<List<WeeklySplitDay>> = weeklySplitDao.observeAll()
@@ -537,6 +622,9 @@ class FitnessRepository(
         templateDao.exerciseIdsForTemplate(templateId)
 
     companion object {
+        /** `direction` marker distinguishing a day-plan row from the old markdown diet plan. */
+        private const val DAY_PLAN_DIRECTION = "DAY_PLAN"
+
         @Volatile private var instance: FitnessRepository? = null
 
         fun get(context: Context): FitnessRepository =

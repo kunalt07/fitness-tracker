@@ -42,6 +42,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -49,6 +50,7 @@ import com.example.fitness_tracker.LocalSnackbarHost
 import com.example.fitness_tracker.data.DietType
 import com.example.fitness_tracker.data.Meal
 import com.example.fitness_tracker.data.MealCategory
+import com.example.fitness_tracker.data.PlannedMeal
 import com.example.fitness_tracker.ui.MinimalTextField
 import com.example.fitness_tracker.ui.PillChip
 import com.example.fitness_tracker.ui.PillCta
@@ -65,6 +67,8 @@ internal fun DietScreen(
     val pref by viewModel.dietPreference.collectAsState()
     val meals by viewModel.visibleMeals.collectAsState()
     val suggest by viewModel.suggestState.collectAsState()
+    val dayPlan by viewModel.dayPlan.collectAsState()
+    val planStatus by viewModel.planStatus.collectAsState()
     val totals by viewModel.totalsToday.collectAsState()
     val goal by viewModel.calorieGoal.collectAsState()
     val snackbarHost = LocalSnackbarHost.current
@@ -76,7 +80,10 @@ internal fun DietScreen(
     var showGoalSheet by rememberSaveable { mutableStateOf(false) }
     var openMealId by rememberSaveable { mutableStateOf<Long?>(null) }
     val openMeal = remember(meals, openMealId) { meals.firstOrNull { it.id == openMealId } }
+    // Tapped AI day-plan meal (hold the object; it has no id).
+    var openPlanned by remember { mutableStateOf<PlannedMeal?>(null) }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -167,6 +174,15 @@ internal fun DietScreen(
         // default Diet accent (amber) before any preference is chosen.
         val pageAccent = activeDietColors(pref)
 
+        // AI "what to eat" for today — sits above the browsable Menu. Only shows
+        // once the user taps the floating Suggest button (Idle renders nothing).
+        DaySuggestSection(
+            meals = dayPlan,
+            status = planStatus,
+            accent = pageAccent,
+            onOpen = { openPlanned = it },
+        )
+
         // One row per category
         MealCategory.entries.forEach { category ->
             val rowMeals = meals.filter { it.category == category }
@@ -204,6 +220,17 @@ internal fun DietScreen(
         Spacer(modifier = Modifier.height(40.dp))
     }
 
+        // Floating "Suggest meals" button — bottom-right, clears the nav bar.
+        DaySuggestFab(
+            loading = planStatus is DietViewModel.PlanStatus.Loading,
+            accent = activeDietColors(pref),
+            onClick = { viewModel.suggestDayPlan() },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 24.dp, bottom = bottomInset + 16.dp),
+        )
+    }
+
     // Detail sheet
     if (openMeal != null) {
         MealDetailSheet(
@@ -233,6 +260,10 @@ internal fun DietScreen(
         )
     }
 
+    openPlanned?.let { planned ->
+        PlannedMealDetailSheet(meal = planned, onDismiss = { openPlanned = null })
+    }
+
     if (showGoalSheet) {
         CalorieGoalSheet(
             initialCalories = goal?.targetCalories,
@@ -242,6 +273,248 @@ internal fun DietScreen(
                 showGoalSheet = false
             },
             onDismiss = { showGoalSheet = false },
+        )
+    }
+}
+
+/**
+ * "Suggested meals" section — the AI day plan (Breakfast/Lunch/Dinner/Snack) shown
+ * as pills at the top of Diet Plan. Renders nothing until the user triggers it.
+ */
+@Composable
+private fun DaySuggestSection(
+    meals: List<PlannedMeal>,
+    status: DietViewModel.PlanStatus,
+    accent: DietTypeColors,
+    onOpen: (PlannedMeal) -> Unit,
+) {
+    val loading = status is DietViewModel.PlanStatus.Loading
+    val error = status as? DietViewModel.PlanStatus.Error
+    // Nothing generated, not loading, no error → render nothing.
+    if (meals.isEmpty() && !loading && error == null) return
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp),
+    ) {
+        SectionLabel("SUGGESTED MEALS")
+        Spacer(modifier = Modifier.height(10.dp))
+        when {
+            loading -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = accent.main,
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        "Planning your day…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            error != null -> {
+                Text(
+                    error.message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            else -> {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    meals.forEach { PlannedMealPill(meal = it, onClick = { onOpen(it) }) }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    "Total: ${meals.sumOf { it.calories }} kcal · " +
+                        "${meals.sumOf { it.proteinG }}g protein",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+    Spacer(modifier = Modifier.height(24.dp))
+}
+
+@Composable
+private fun PlannedMealPill(
+    meal: PlannedMeal,
+    onClick: () -> Unit,
+) {
+    // Minimal row: diet-color dot + name, macros on the right. Tap for prep.
+    val dietType = dietTypeFromLabel(meal.dietType)
+    val dotColor = dietType?.let { dietTypeColors(it).main }
+        ?: MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(RoundedCornerShape(50))
+                .background(dotColor),
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            meal.name,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        if (meal.calories > 0) {
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                "${meal.calories} kcal · ${meal.proteinG}g",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlannedMealDetailSheet(
+    meal: PlannedMeal,
+    onDismiss: () -> Unit,
+) {
+    val sheetState = rememberFullSheetState()
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                text = buildString {
+                    append(meal.category)
+                    if (meal.dietType.isNotBlank()) append(" · ${meal.dietType}")
+                }.uppercase(),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            Text(
+                text = meal.name,
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            if (meal.description.isNotBlank()) {
+                Text(
+                    text = meal.description,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        shape = RoundedCornerShape(16.dp),
+                    )
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceAround,
+            ) {
+                MacroStat("${meal.calories}", "kcal")
+                MacroStat("${meal.proteinG}g", "protein")
+            }
+
+            if (meal.ingredients.isNotEmpty()) {
+                SectionLabel("Ingredients")
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    meal.ingredients.forEach { line ->
+                        Text(
+                            text = "·  $line",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+
+            if (meal.steps.isNotEmpty()) {
+                SectionLabel("Steps")
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    meal.steps.forEachIndexed { i, line ->
+                        Text(
+                            text = "${i + 1}.  $line",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+
+            QuietTextButton(label = "Close", onClick = onDismiss)
+        }
+    }
+}
+
+/** Best-effort map an AI diet-type label back to [DietType] for coloring. */
+private fun dietTypeFromLabel(s: String): DietType? {
+    val t = s.lowercase()
+    return when {
+        "vegan" in t -> DietType.VEGAN
+        "egg" in t -> DietType.EGGETARIAN
+        "non" in t -> DietType.NON_VEG
+        "veg" in t -> DietType.VEG
+        else -> null
+    }
+}
+
+@Composable
+private fun DaySuggestFab(
+    loading: Boolean,
+    accent: DietTypeColors,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(accent.main)
+            .clickable(enabled = !loading, onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (loading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+                color = androidx.compose.ui.graphics.Color.White,
+            )
+        } else {
+            Icon(
+                Icons.Filled.AutoAwesome,
+                contentDescription = null,
+                tint = androidx.compose.ui.graphics.Color.White,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        Text(
+            if (loading) "Planning…" else "Suggest meals",
+            style = MaterialTheme.typography.labelLarge,
+            color = androidx.compose.ui.graphics.Color.White,
         )
     }
 }

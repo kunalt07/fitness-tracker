@@ -74,6 +74,10 @@ internal fun HomeScreen(
 ) {
     val dietTotals by dietViewModel.totalsToday.collectAsState()
     val dietGoal by dietViewModel.calorieGoal.collectAsState()
+    val daySuggestions by dietViewModel.dayPlan.collectAsState()
+    val foodsToday by dietViewModel.foodsToday.collectAsState()
+    val foodOptions by dietViewModel.foodSuggestions.collectAsState()
+    val aiEstimating by dietViewModel.aiEstimating.collectAsState()
     val profile by authViewModel.profile.collectAsState()
     val split by planViewModel.weeklySplit.collectAsState()
     val todayTotals by logViewModel.todayTotals.collectAsState()
@@ -252,6 +256,15 @@ internal fun HomeScreen(
         FoodQuickAddSheet(
             consumed = dietTotals.calories,
             target = dietGoal?.targetCalories,
+            suggestions = daySuggestions,
+            entries = foodsToday,
+            foodOptions = foodOptions,
+            aiBusy = aiEstimating,
+            onAskAi = { query, fill -> dietViewModel.estimateFood(query, fill) },
+            onQuickLog = { meal ->
+                dietViewModel.quickAddFood(meal.name, meal.calories, meal.proteinG)
+            },
+            onRemove = { id -> dietViewModel.deleteFoodEntry(id) },
             onDismiss = { showFood = false },
             onOpenDiet = {
                 showFood = false
