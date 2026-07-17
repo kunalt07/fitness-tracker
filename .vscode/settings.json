@@ -1,0 +1,45 @@
+{
+  // Hide build artifacts / IDE dirs from the file explorer
+  "files.exclude": {
+    "**/.gradle": true,
+    "**/build": true,
+    "**/.idea": true,
+    "**/.cxx": true,
+    "**/*.iml": true
+  },
+  // Keep search fast — skip generated + binary-heavy dirs
+  "search.exclude": {
+    "**/.gradle": true,
+    "**/build": true,
+    "**/.idea": true,
+    "**/app/build": true,
+    "**/*.apk": true,
+    "**/*.jks": true
+  },
+  // Don't watch build output (saves CPU, avoids noisy reloads)
+  "files.watcherExclude": {
+    "**/.gradle/**": true,
+    "**/build/**": true,
+    "**/.idea/**": true
+  },
+
+  // Markdown: this is a planning-docs workspace
+  "[markdown]": {
+    "editor.wordWrap": "on",
+    "editor.quickSuggestions": {
+      "comments": "off",
+      "strings": "off",
+      "other": "off"
+    },
+    "editor.rulers": [80]
+  },
+  "editor.wordWrapColumn": 80,
+
+  // Trim noise on save (docs only; won't fight Android Studio's Kotlin formatting)
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+
+  // Android Studio owns Kotlin — don't let VSCode format .kt/.gradle
+  "[kotlin]": { "files.trimTrailingWhitespace": false },
+  "[gradle]": { "files.trimTrailingWhitespace": false }
+}

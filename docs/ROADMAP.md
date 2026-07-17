@@ -30,6 +30,9 @@ Generate a day plan → swap one meal → only that pill changes, total stays ne
 
 _(Proposed by Claude — re-order or replace if something else is higher priority.)_
 
+**Signals verified** (`FitnessRepository`, all `suspend fun(): String?`, null when no data):
+`weightGoalContext` :216 · `calorieBudgetContext` :188 (goal + remaining today) · `workoutConsistencyContext` :272 (14-day trained days + streak) · `summarizeRecentHistory` :480 (muscle tallies + top lifts).
+
 ## Next (queued, not started)
 - Directional nav slide tied to swipe direction (needs from/to index tracking) — only if fade-through feels flat
 
