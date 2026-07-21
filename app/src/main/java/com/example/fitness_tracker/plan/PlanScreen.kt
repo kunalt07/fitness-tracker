@@ -906,7 +906,7 @@ private fun SplitEditorSheet(
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ChipPicker(
+internal fun ChipPicker(
     serialized: String,
     onChange: (String) -> Unit,
     suggestions: List<String>,

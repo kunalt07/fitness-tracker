@@ -222,25 +222,6 @@ private val SPLIT_FOCUS_SUGGESTIONS = listOf(
 )
 
 @Composable
-private fun FocusSuggestionChip(label: String, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .background(
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = RoundedCornerShape(50),
-            )
-            .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-    }
-}
-
-@Composable
 private fun SplitStep(
     onPick: (SplitPreset) -> Unit,
     onCustom: (List<WeeklySplitDay>) -> Unit,
@@ -248,8 +229,6 @@ private fun SplitStep(
 ) {
     var customizing by rememberSaveable { mutableStateOf(false) }
     var focuses by rememberSaveable { mutableStateOf(List(7) { "" }) }
-    // Day row currently focused — shows its suggestion chips below the field.
-    var focusedDay by rememberSaveable { mutableStateOf(-1) }
 
     Column(
         modifier = Modifier
@@ -274,43 +253,20 @@ private fun SplitStep(
             SkipRow(label = "Skip for now", onSkip = onSkip)
         } else {
             Title("Build your week")
-            Subtitle("Type what you train each day. Leave a day blank for rest.")
+            Subtitle("Add what you train each day — pick more than one. Leave a day blank for rest.")
 
             Spacer(modifier = Modifier.height(24.dp))
 
             DAY_FULL_ONB.forEachIndexed { i, day ->
-                MinimalTextField(
-                    value = focuses[i],
-                    onValueChange = { v ->
-                        focuses = focuses.toMutableList().also { it[i] = v }
-                    },
-                    label = day,
-                    placeholder = "Rest day",
-                    singleLine = true,
-                    modifier = Modifier.onFocusChanged { if (it.isFocused) focusedDay = i },
+                com.example.fitness_tracker.plan.ChipPicker(
+                    serialized = focuses[i],
+                    onChange = { v -> focuses = focuses.toMutableList().also { it[i] = v } },
+                    suggestions = SPLIT_FOCUS_SUGGESTIONS,
+                    sectionLabel = day,
+                    label = "Add focus",
+                    placeholder = "Type or pick — e.g. Push, Chest…",
                 )
-                if (focusedDay == i) {
-                    val q = focuses[i].trim().lowercase()
-                    val matches = SPLIT_FOCUS_SUGGESTIONS.filter { s ->
-                        q.isEmpty() || (s.lowercase().contains(q) && !s.equals(focuses[i].trim(), ignoreCase = true))
-                    }
-                    if (matches.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            matches.forEach { s ->
-                                FocusSuggestionChip(label = s) {
-                                    focuses = focuses.toMutableList().also { it[i] = s }
-                                }
-                            }
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
             }
 
             Spacer(modifier = Modifier.height(8.dp))
