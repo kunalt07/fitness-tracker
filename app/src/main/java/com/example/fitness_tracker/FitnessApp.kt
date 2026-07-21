@@ -1,7 +1,9 @@
 package com.example.fitness_tracker
 
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -30,16 +32,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.InsertChart
 import androidx.compose.material.icons.filled.Lightbulb
-import androidx.compose.material.icons.filled.Restaurant
-import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.filled.RestaurantMenu
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.InsertChartOutlined
 import androidx.compose.material.icons.outlined.Lightbulb
-import androidx.compose.material.icons.outlined.Restaurant
-import androidx.compose.material.icons.rounded.FitnessCenter
+import androidx.compose.material.icons.outlined.RestaurantMenu
+import androidx.compose.material.icons.outlined.FitnessCenter
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -60,6 +62,7 @@ import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -109,11 +112,10 @@ internal enum class TopLevelDest(
 ) {
     Home("home", "Home", Icons.Filled.Home, Icons.Outlined.Home),
     Plan("plan", "Plan", Icons.Filled.Lightbulb, Icons.Outlined.Lightbulb),
-    // M3 rounded variant — solid filled dumbbell, both states use it
-    // (selected stays solid; unselected just changes tint).
-    Log("log", "Log", Icons.Rounded.FitnessCenter, Icons.Rounded.FitnessCenter),
-    Diet("diet", "Diet", Icons.Filled.Restaurant, Icons.Outlined.Restaurant),
-    Stats("stats", "Stats", Icons.Filled.BarChart, Icons.Outlined.BarChart),
+    // Outlined line-art dumbbell to match the other nav icons (hollow, not solid).
+    Log("log", "Log", Icons.Filled.FitnessCenter, Icons.Outlined.FitnessCenter),
+    Diet("diet", "Diet", Icons.Filled.RestaurantMenu, Icons.Outlined.RestaurantMenu),
+    Stats("stats", "Stats", Icons.Filled.InsertChart, Icons.Outlined.InsertChartOutlined),
 }
 
 @Composable
@@ -238,11 +240,15 @@ private fun FloatingNavBar(
         currentRoute?.let { hierarchy?.any { d -> d.route == dest.route } } == true
     }.let { if (it < 0) 0 else it }
 
-    // Animated float so the pill slides smoothly when selection changes.
-    // Tween (not spring) keeps the slide steady — no overshoot, no whip.
+    // Animated float so the pill slides smoothly when selection changes. A
+    // no-bounce spring glides to the target and re-targets cleanly mid-flight
+    // (fast tab-hopping stays fluid instead of queuing rigid tweens).
     val animatedIndex by animateFloatAsState(
         targetValue = selectedIndex.toFloat(),
-        animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing),
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
         label = "nav-pill-position",
     )
 
@@ -298,14 +304,16 @@ private fun FloatingNavBar(
                 val slotWidthPx = with(density) { (maxWidth / entries.size).toPx() }
                 val pillOffsetX = (animatedIndex * slotWidthPx).roundToInt()
 
-                // Sliding selection background.
+                // Sliding selection indicator — a rounded-rect OUTLINE around the
+                // active icon (no fill), so every icon keeps the same tint.
                 Box(
                     modifier = Modifier
                         .offset { IntOffset(pillOffsetX, 0) }
                         .width(slotWidthDp)
                         .fillMaxHeight()
-                        .background(
-                            color = MaterialTheme.colorScheme.primary,
+                        .border(
+                            width = 1.5.dp,
+                            color = MaterialTheme.colorScheme.onSurface,
                             shape = RoundedCornerShape(22.dp),
                         ),
                 )
@@ -329,7 +337,10 @@ private fun FloatingNavBar(
                                     interactionSource = tapSource,
                                     indication = null,
                                 ) {
-                                    if (index != selectedIndex) onNavigate(dest)
+                                    // Always navigate — re-tapping the active tab
+                                    // pops back to its root (e.g. Profile → Home),
+                                    // so Home always returns to the main screen.
+                                    onNavigate(dest)
                                 },
                         )
                     }
@@ -345,23 +356,43 @@ private fun NavPill(
     selected: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val tint = if (selected) MaterialTheme.colorScheme.onPrimary
+    // Icons only — selected reads as full-white, unselected dimmed. The outlined
+    // selection box (drawn behind in FloatingNavBar) marks the active tab.
+    val tint = if (selected) MaterialTheme.colorScheme.onSurface
     else MaterialTheme.colorScheme.onSurfaceVariant
-    androidx.compose.foundation.layout.Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+    // Tap-pop: the active icon springs up ~1.2x then settles back, so tapping a
+    // tab gives a little enlarge bounce. Unselected icons rest at 1x.
+    val iconScale by animateFloatAsState(
+        targetValue = if (selected) 1.2f else 1f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow,
+        ),
+        label = "nav-icon-pop",
+    )
+    androidx.compose.foundation.layout.Box(
+        modifier = modifier.graphicsLayer { scaleX = iconScale; scaleY = iconScale },
+        contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            imageVector = if (selected) dest.iconFilled else dest.iconOutlined,
-            contentDescription = dest.label,
-            tint = tint,
-        )
-        Text(
-            text = dest.label,
-            style = MaterialTheme.typography.labelSmall,
-            color = tint,
-            modifier = Modifier.padding(top = 2.dp),
-        )
+        // Log and Diet use custom Material Symbols drawables; the rest use their
+        // bundled vector icons.
+        val customIcon = when (dest) {
+            TopLevelDest.Log -> R.drawable.ic_exercise
+            TopLevelDest.Diet -> R.drawable.ic_menu_book
+            else -> null
+        }
+        if (customIcon != null) {
+            Icon(
+                painter = androidx.compose.ui.res.painterResource(customIcon),
+                contentDescription = dest.label,
+                tint = tint,
+            )
+        } else {
+            Icon(
+                imageVector = dest.iconOutlined,
+                contentDescription = dest.label,
+                tint = tint,
+            )
+        }
     }
 }
