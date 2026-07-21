@@ -3,7 +3,7 @@
 ## Project basics
 - **Path**: `/Users/kunaltigga/AndroidStudioProjects/FitnessTracker`
 - **Repo**: `https://github.com/kunalt07/fitness-tracker` (public)
-- **Last commit on `main`**: `473f780` — "Roadmap: mark Diet day plan + Home food overhaul done" (working tree clean; see Recent commit history below)
+- **Last commit on `main`**: `ef4106a` — "Docs: add user-flows walkthrough" (working tree clean, NOT yet pushed to origin; see Recent commit history below)
 - **Docs live in `docs/`**: `CONTEXT.md` (this — current state), `ROADMAP.md` (queue/done/won't-do), `PLAN.md` (shipped feature map), `DECISIONS.md` (why-log). Plan in VS Code / Claude Code; implement in Android Studio (same repo, shared files).
 - **History rewritten**: `Co-Authored-By: Claude` trailer scrubbed from all 12 commits via `git filter-branch` + force-push. SHAs changed. Safety net at `refs/original/refs/heads/main` (local only). Do NOT re-add the trailer on future commits — user does not want Claude as contributor.
 - **App name**: Vector (was Fitness Tracker)
@@ -16,7 +16,7 @@
 - kotlinx-serialization `1.7.3` (added for backup/restore JSON)
 - Firebase AI `17.+` via `GenerativeBackend.googleAI()` — Gemini 2.5 Flash
 - minSdk/targetSdk **37** (Android 16)
-- AGP 9.2.1, Kotlin 2.2.10
+- AGP 9.3.0, Kotlin 2.2.10, KSP 2.3.2, Gradle wrapper 9.5.0
 - **No DI**, **no tests**, **no Hilt**. Repository singleton via `companion object get(context)`.
 
 ## Build
@@ -50,16 +50,24 @@
 - AI prompt context helpers in `FitnessRepository`: `summarizeRecentHistory`, `weightGoalContext`, `nutritionContext`
 - Plan AI results live in memory only — `PlanViewModel.init` calls `clearCachedPlan()` so each launch starts blank
 - Per-day weekly split with chip-and-suggestion picker (`FocusPicker`); equipment uses same `ChipPicker` pattern
-- **Plan → Log handoff**: generated plan queues exercises into `pending_plan`; Log auto-starts a session for them
+- **Plan → Log handoff**: generated plan queues exercises into `pending_plan`; applying a plan calls `repo.requestOpenSessionOnLog()` (one-shot StateFlow) so Log opens straight into the session view. Log consumes the flag via `consumeOpenSessionRequest()`.
+- **Session-open flag is DB-backed**: `SessionDao.observeOpenCount()` counts not-ended sessions that have ≥1 logged set (empty auto-started sessions ignored). `repo.hasOpenSession: Flow<Boolean>` → both Home and Log agree across ViewModel instances (no more in-memory `activeSession` drift). Ending/discarding a session calls `repo.clearPlan()`.
+- **Plan generated-result rendering** (`PlanScreen.kt`): AI markdown parsed into sections (`parsePlanSections`) and rendered as distinct exercise rows (`ExerciseResultRow`, name + sets×reps split on —/–/-/:) instead of raw `MarkdownText`. Result region `Crossfade`s skeleton→plan. Inputs wrapped in outlined `InputCard`s; equipment is a with/without icon toggle (blank string = bodyweight).
 - AI errors mapped to friendly snackbar messages (not raw exceptions)
 
 ## Onboarding (`onboarding/`)
 - First-launch three-step full-screen flow, once per device, after WelcomeScreen name capture, before main app. Every step skippable.
-- Step 1: four weekly-split presets (PPL, Bro split, Upper/Lower, Full body 3-day) as cards with Sun…Sat dot strip → writes seven `WeeklySplitDay` rows
-- Step 2: current/target weight decimal fields → `DailyViewModel.saveBodyWeight`
+- Step 1: four weekly-split presets (PPL, Bro split, Upper/Lower, Full body 3-day) as cards with Sun…Sat dot strip → writes seven `WeeklySplitDay` rows. Also a **"Build my own"** custom editor: per-day focus text fields with quick-pick suggestion chips (`SPLIT_FOCUS_SUGGESTIONS`), "Rest"/blank → empty focus.
+- Step 2: current/target weight decimal fields → `DailyViewModel.saveBodyWeight`, plus optional **daily calorie goal** field → `DietViewModel.saveCalorieGoal`
 - Step 3: diet picker (Diet-tab accent colors)
 - `OnboardingStore` singleton (SharedPreferences, mirrors `ThemeModeStore`)
 - `MainActivity` gate: `profile == null` → Welcome; `!onboardingComplete` → Onboarding; else → FitnessApp
+
+## Log workout page (`log/LogScreen.kt`)
+- Muscle grid is the **default "workout page"** — `MuscleGroupGrid` now **multi-select** (`selected: List<String>`, `onToggleMuscleGroup`). "Start workout (N groups)" queues every exercise across the selected groups. Empty selection → plain empty session.
+- Session view is a **separate mode** gated by `viewingSession` (plain `remember`, so re-entering the tab resets to the grid). While a session runs the grid shows **Continue session** / **Change group** (`PillCtaSecondary`, replaces the queued plan). Session ends → snap back to grid via `LaunchedEffect(active)`.
+- The old per-muscle `ExerciseChooserSheet` picker is gone.
+- Grid sizing: ≤4 vertical units fill screen height via `weight`; more → scroll at fixed 150dp tile height (`MUSCLE_MAX_UNITS_BEFORE_SCROLL`).
 
 ## Backup / restore (`data/BackupDao.kt`, `BackupRepository.kt`)
 - Every Room table → single JSON document and back, via stock SAF dialogs
@@ -89,12 +97,17 @@
 - **Signals fed to the prompt** (all nullable, block emitted only when present): `weightGoalContext`, `calorieBudgetContext` (NEW — always surfaces goal + remaining, unlike `nutritionContext`), `summarizeRecentHistory`, `workoutConsistencyContext` (NEW — trained-days-in-14 + streak, from `setEntryDao.allSetTimestamps()`).
 - **Model**: `data/PlannedMeal.kt` (`@Serializable`; category, dietType, name, description, calories, proteinG, ingredients, steps). Not a Room entity.
 - **Persistence + sharing**: day plan saved per-day as JSON in the (otherwise-dead) `cached_diet_plan` table, `direction = "DAY_PLAN"` — NO schema migration. `FitnessRepository` (singleton) exposes `dayPlan: StateFlow`; both Diet and Home ViewModels share it. Diet VM keeps only a `PlanStatus` (Idle/Loading/Error); the meals list is the repo flow.
+- **Menu search** (`DietScreen.kt`): search pill filters browsable category rows by meal name (case-insensitive); empty categories hidden while searching. Menu `LazyRow`s use plain `remember(pref?.type) { LazyListState() }` so they reset to the left on tab open / diet-type switch (not nav-restored).
 - **Home Food sheet** (`home/DailySheets.kt` `FoodQuickAddSheet`): tap-to-log side-scroll suggestion pills (diet-colored); **name autocomplete** from menu + day-plan + past logs (`DietViewModel.foodSuggestions`) with an **"Ask AI"** fallback (`estimateFood`) that estimates macros for any food; **removable** "logged today" list (`deleteFoodEntry`); **over-goal confirm popup** (AlertDialog) when an add would exceed the calorie goal.
 
 ## Feature backlog
-See `ROADMAP.md` for the live queue / done / won't-do. As of `473f780` the "Now" section holds the next planned item; ask the user before starting if unsure.
+See `ROADMAP.md` for the live queue / done / won't-do. As of `ef4106a` the "Now" section holds the next planned item; ask the user before starting if unsure.
 
 ## Recent commit history (all on main; SHAs post-scrub)
+- `ef4106a` — Docs: add user-flows walkthrough (USER_FLOWS.md + HTML + screenshot)
+- `3b7c9d2` — Build: bump AGP 9.3.0, KSP 2.3.2, Gradle wrapper 9.5.0
+- `5c5fe47` — Log/Plan/Onboarding UX overhaul: multi-select workout page, structured plan, custom split
+- `789aa64` — Add VSCode workspace settings; note verified AI context helpers in roadmap
 - `473f780` — Roadmap: mark Diet day plan + Home food overhaul done
 - `45c6c1a` — Diet day plan + Home food logging overhaul
 - `1aa853c` — Diet AI: goal- and training-aware meal suggestions
@@ -130,7 +143,7 @@ See `ROADMAP.md` for the live queue / done / won't-do. As of `473f780` the "Now"
 - Floating dock has no card chrome — controls float over scroll content. Quick log pencil icon may be hard to read against busy content (no individual backdrop).
 
 ## Session-resume cues
-- Working tree clean at `473f780`, pushed to `origin/main`. Recent focus: Diet day plan + Home food logging. For next direction, read `ROADMAP.md` "Now".
+- Working tree clean at `ef4106a`, **NOT yet pushed to `origin/main`** (3 local commits ahead: `5c5fe47` UX overhaul, `3b7c9d2` build bump, `ef4106a` docs). Recent focus: Log multi-select workout page + session-view split, Plan structured render, onboarding custom split, Diet menu search. For next direction, read `ROADMAP.md` "Now" (still queues `swapMeal`).
 - **Verify smoothness on RELEASE builds** — debug Compose is janky (proven repeatedly this project); nav/animation lag in debug is expected, gone in release. adb: `$HOME/Library/Android/sdk/platform-tools/adb`; device `2B121JEGR01006`. Release sig ≠ debug → uninstall before installing release (wipes data).
 - Keystore + password are critical — flag for off-machine backup if user asks about distribution.
 - User tends to ask for "blur"/"glass" — be honest real blur needs Haze; frame the tradeoff cleanly.
