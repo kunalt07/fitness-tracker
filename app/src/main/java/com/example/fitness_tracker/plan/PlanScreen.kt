@@ -1,6 +1,9 @@
 package com.example.fitness_tracker.plan
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -24,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
@@ -49,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.fitness_tracker.UiState
@@ -59,7 +64,6 @@ import com.example.fitness_tracker.ui.PillChip
 import com.example.fitness_tracker.ui.PillCta
 import com.example.fitness_tracker.ui.PillCtaSecondary
 import com.example.fitness_tracker.ui.ScreenTitle
-import com.example.fitness_tracker.ui.MarkdownText
 import com.example.fitness_tracker.ui.QuietTextButton
 import com.example.fitness_tracker.ui.SectionLabel
 import com.example.fitness_tracker.ui.SkeletonBlock
@@ -99,7 +103,8 @@ fun PlanScreen(
 ) {
     var goal by rememberSaveable { mutableStateOf(GOALS.first()) }
     var duration by rememberSaveable { mutableIntStateOf(30) }
-    var equipment by rememberSaveable { mutableStateOf("") }
+    // Non-blank = train with equipment; blank = bodyweight only.
+    var equipment by rememberSaveable { mutableStateOf("Full gym equipment") }
     var notes by rememberSaveable { mutableStateOf("") }
     var selectedDay by rememberSaveable { mutableIntStateOf(viewModel.todayDayOfWeek()) }
     var showSettingsMenu by rememberSaveable { mutableStateOf(false) }
@@ -154,9 +159,9 @@ fun PlanScreen(
 
             Column(
                 modifier = Modifier.padding(horizontal = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(28.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                InputCard {
                     SectionLabel("Goal")
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(GOALS) { g ->
@@ -165,7 +170,7 @@ fun PlanScreen(
                     }
                 }
 
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                InputCard {
                     SectionLabel("Duration")
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(DURATIONS) { d ->
@@ -178,62 +183,91 @@ fun PlanScreen(
                     }
                 }
 
-                EquipmentPicker(
-                    serialized = equipment,
-                    onChange = { equipment = it },
-                )
+                InputCard {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        SectionLabel("Equipment")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            EquipmentOption(
+                                icon = Icons.Outlined.Check,
+                                contentDescription = "With equipment",
+                                selected = equipment.isNotBlank(),
+                                onClick = { equipment = "Full gym equipment" },
+                            )
+                            EquipmentOption(
+                                icon = Icons.Outlined.Close,
+                                contentDescription = "Without equipment",
+                                selected = equipment.isBlank(),
+                                onClick = { equipment = "" },
+                            )
+                        }
+                    }
+                }
 
-                MinimalTextField(
-                    value = notes,
-                    onValueChange = { notes = it },
-                    label = "Notes",
-                    placeholder = "Sore back, no jumping…",
-                    minLines = 2,
-                )
+                InputCard {
+                    MinimalTextField(
+                        value = notes,
+                        onValueChange = { notes = it },
+                        label = "Notes",
+                        placeholder = "Sore back, no jumping…",
+                        minLines = 2,
+                    )
+                }
             }
 
-            when (val s = uiState) {
-                UiState.Loading -> PlanSkeleton(
-                    modifier = Modifier
-                        .padding(horizontal = 24.dp)
-                        .padding(top = 32.dp, bottom = 24.dp),
-                )
-                is UiState.Error -> Text(
-                    text = s.errorMessage,
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier
-                        .padding(horizontal = 24.dp)
-                        .padding(top = 28.dp),
-                )
-                is UiState.Success -> {
-                    val planAccent = com.example.fitness_tracker.ui.theme.featureAccent(
-                        com.example.fitness_tracker.ui.theme.Feature.PLAN,
-                    )
-                    Column(
+            // Crossfade the result region so the skeleton → plan (and error)
+            // transitions fade instead of popping in.
+            Crossfade(
+                targetState = uiState,
+                animationSpec = tween(260),
+                label = "planResult",
+            ) { s ->
+                when (s) {
+                    UiState.Loading -> PlanSkeleton(
                         modifier = Modifier
                             .padding(horizontal = 24.dp)
                             .padding(top = 32.dp, bottom = 24.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Outlined.AutoAwesome,
-                                contentDescription = null,
-                                tint = planAccent.main,
-                                modifier = Modifier.size(14.dp),
-                            )
-                            Text(
-                                text = "Your plan",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = planAccent.main,
-                                modifier = Modifier.padding(start = 6.dp),
-                            )
+                    )
+                    is UiState.Error -> Text(
+                        text = s.errorMessage,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier
+                            .padding(horizontal = 24.dp)
+                            .padding(top = 28.dp),
+                    )
+                    is UiState.Success -> {
+                        val planAccent = com.example.fitness_tracker.ui.theme.featureAccent(
+                            com.example.fitness_tracker.ui.theme.Feature.PLAN,
+                        )
+                        Column(
+                            modifier = Modifier
+                                .padding(horizontal = 24.dp)
+                                .padding(top = 32.dp, bottom = 24.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Outlined.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = planAccent.main,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                                Text(
+                                    text = "Your plan",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = planAccent.main,
+                                    modifier = Modifier.padding(start = 6.dp),
+                                )
+                            }
+                            PlanResult(markdown = s.outputText)
                         }
-                        MarkdownText(text = s.outputText)
                     }
+                    UiState.Initial -> Spacer8()
                 }
-                UiState.Initial -> Spacer8()
             }
         }
 
@@ -378,6 +412,7 @@ fun PlanScreen(
             onDismiss = { showReminder = false },
         )
     }
+
 }
 
 @Composable
@@ -858,6 +893,156 @@ private fun SuggestionChip(label: String, onTap: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurface,
         )
     }
+}
+
+// --- Generated-plan rendering: parse the AI markdown into sections, and render
+// the Main-section exercises as distinct rows. ---
+
+private data class PlanItem(val text: String, val isExercise: Boolean, val isBullet: Boolean)
+private data class PlanSectionData(val header: String?, val items: List<PlanItem>)
+
+private fun cleanInline(s: String): String =
+    s.replace("**", "").replace("`", "").trim()
+
+private fun parsePlanSections(markdown: String): List<PlanSectionData> {
+    val sections = mutableListOf<PlanSectionData>()
+    var header: String? = null
+    var items = mutableListOf<PlanItem>()
+    fun flush() {
+        if (header != null || items.isNotEmpty()) {
+            sections.add(PlanSectionData(header, items.toList()))
+        }
+        items = mutableListOf()
+    }
+    markdown.lines().forEach { raw ->
+        val line = raw.trim()
+        when {
+            line.isEmpty() -> Unit
+            line.startsWith("#") -> {
+                flush()
+                header = line.trimStart('#').trim()
+            }
+            line.startsWith("-") || line.startsWith("*") || line.startsWith("•") -> {
+                val isEx = header?.contains("main", ignoreCase = true) == true
+                items.add(PlanItem(cleanInline(line.drop(1)), isExercise = isEx, isBullet = true))
+            }
+            else -> items.add(PlanItem(cleanInline(line), isExercise = false, isBullet = false))
+        }
+    }
+    flush()
+    return sections
+}
+
+/** Split "Bench Press — 4 x 8" into name + detail. */
+private fun splitExercise(raw: String): Pair<String, String> {
+    val markers = listOf("—", "–", " - ", ":")
+    var idx = -1
+    var mlen = 0
+    markers.forEach { m ->
+        val i = raw.indexOf(m)
+        if (i >= 0 && (idx == -1 || i < idx)) { idx = i; mlen = m.length }
+    }
+    return if (idx >= 0) raw.substring(0, idx).trim() to raw.substring(idx + mlen).trim()
+    else raw.trim() to ""
+}
+
+@Composable
+private fun PlanResult(markdown: String) {
+    val sections = remember(markdown) { parsePlanSections(markdown) }
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        sections.forEach { section ->
+            section.header?.let {
+                Text(
+                    text = it.uppercase(),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            section.items.forEach { item ->
+                when {
+                    item.isExercise -> ExerciseResultRow(item.text)
+                    item.isBullet -> Text(
+                        text = "•  ${item.text}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    else -> Text(
+                        text = item.text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** One exercise row: name (+ sets×reps). */
+@Composable
+private fun ExerciseResultRow(raw: String) {
+    val (name, detail) = remember(raw) { splitExercise(raw) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Text(
+            text = name,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        if (detail.isNotBlank()) {
+            Text(
+                text = detail,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** One half of the with/without-equipment toggle: an icon-only tick/X pill. */
+@Composable
+private fun EquipmentOption(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val bg = if (selected) MaterialTheme.colorScheme.primaryContainer
+    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    val fg = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+    else MaterialTheme.colorScheme.onSurfaceVariant
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(bg)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = contentDescription, tint = fg, modifier = Modifier.size(20.dp))
+    }
+}
+
+/** Rounded, outlined container that groups one input section. Border-only (no
+ * fill) so the inner chips/fields keep their own surfaces and stay legible. */
+@Composable
+private fun InputCard(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                shape = RoundedCornerShape(20.dp),
+            )
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        content = content,
+    )
 }
 
 @Composable

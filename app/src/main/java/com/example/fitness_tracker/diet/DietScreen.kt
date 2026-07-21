@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -24,6 +25,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -78,6 +81,8 @@ internal fun DietScreen(
     val bottomInset = contentPadding.calculateBottomPadding()
 
     var showGoalSheet by rememberSaveable { mutableStateOf(false) }
+    // Menu search query — filters the browsable category rows by meal name.
+    var menuQuery by rememberSaveable { mutableStateOf("") }
     var openMealId by rememberSaveable { mutableStateOf<Long?>(null) }
     val openMeal = remember(meals, openMealId) { meals.firstOrNull { it.id == openMealId } }
     // Tapped AI day-plan meal (hold the object; it has no id).
@@ -125,6 +130,35 @@ internal fun DietScreen(
                 )
             }
         }
+
+        // Search pill — filters the browsable menu below by meal name.
+        MinimalTextField(
+            value = menuQuery,
+            onValueChange = { menuQuery = it },
+            label = "Search menu",
+            placeholder = "e.g. paneer, oats…",
+            singleLine = true,
+            trailingIcon = {
+                if (menuQuery.isNotEmpty()) {
+                    IconButton(onClick = { menuQuery = "" }) {
+                        Icon(
+                            Icons.Outlined.Close,
+                            contentDescription = "Clear search",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else {
+                    Icon(
+                        Icons.Outlined.Search,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            modifier = Modifier.padding(horizontal = 24.dp),
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         // Diet type picker — each option carries a recognisable color:
         //   Veg = green dot, Non-veg = red dot, Vegan = leaf green, Eggetarian = amber.
@@ -184,9 +218,19 @@ internal fun DietScreen(
         )
 
         // One row per category
+        val query = menuQuery.trim()
         MealCategory.entries.forEach { category ->
-            val rowMeals = meals.filter { it.category == category }
-            if (rowMeals.isEmpty() && suggest !is DietViewModel.SuggestState.Loading) return@forEach
+            val rowMeals = meals.filter {
+                it.category == category &&
+                    (query.isBlank() || it.name.contains(query, ignoreCase = true))
+            }
+            // While searching, only show categories with a match; otherwise keep the
+            // existing behaviour (show empty rows during a suggest-more load).
+            if (query.isNotBlank()) {
+                if (rowMeals.isEmpty()) return@forEach
+            } else if (rowMeals.isEmpty() && suggest !is DietViewModel.SuggestState.Loading) {
+                return@forEach
+            }
 
             CategoryHeader(
                 category = category,
@@ -196,7 +240,13 @@ internal fun DietScreen(
                 modifier = Modifier.padding(horizontal = 24.dp),
             )
             Spacer(modifier = Modifier.height(10.dp))
+            // Plain remember (not the saver-backed rememberLazyListState) so the
+            // row starts at the beginning every time the Diet tab is opened,
+            // instead of nav restoring a previous horizontal scroll offset. Keyed
+            // on the diet type so switching dietary option also resets to the left.
+            val menuRowState = remember(pref?.type) { LazyListState() }
             LazyRow(
+                state = menuRowState,
                 contentPadding = PaddingValues(horizontal = 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {

@@ -78,6 +78,14 @@ class LogViewModel(app: Application) : AndroidViewModel(app) {
     val plannedExerciseIds: StateFlow<List<Long>> =
         repo.pendingPlan.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
+    /** True when the Plan tab applied a plan and wants Log to open the session view. */
+    val openSessionOnLog: StateFlow<Boolean> = repo.openSessionOnLog
+    fun consumeOpenSessionRequest() = repo.consumeOpenSessionOnLog()
+
+    /** DB-backed "session in progress" flag — correct across ViewModel instances. */
+    val hasOpenSession: StateFlow<Boolean> =
+        repo.hasOpenSession.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     /** Set IDs that are the user's all-time best estimated-1RM for that exercise. */
     val prSetIds: StateFlow<Set<Long>> =
         repo.prSetIds.map { it.toSet() }
@@ -204,7 +212,8 @@ class LogViewModel(app: Application) : AndroidViewModel(app) {
                 repo.deleteSession(current.id)
                 _activeSession.value = null
                 cancelRest()
-                // Plan stays — user might want it for the next session today.
+                // Reset the queued plan so the next session starts clean.
+                repo.clearPlan()
             } else {
                 // Prompt the user to save this as a template before fully ending.
                 _saveTemplatePrompt.value = current.id
@@ -226,7 +235,8 @@ class LogViewModel(app: Application) : AndroidViewModel(app) {
             _activeSession.value = null
             _saveTemplatePrompt.value = null
             cancelRest()
-            // Plan stays — user might want it for the next session today.
+            // Reset the queued plan so the next session starts clean.
+            repo.clearPlan()
 
             requestCritique(sessionSets)
         }

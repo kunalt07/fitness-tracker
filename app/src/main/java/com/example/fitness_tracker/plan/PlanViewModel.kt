@@ -159,6 +159,8 @@ class PlanViewModel(app: Application) : AndroidViewModel(app) {
         if (names.isEmpty()) return 0
         val ids = repo.resolveOrCreateExercises(names)
         repo.stagePlan(ids)
+        // Ask the Log tab to open the in-progress view when we navigate to it.
+        repo.requestOpenSessionOnLog()
         return ids.size
     }
 

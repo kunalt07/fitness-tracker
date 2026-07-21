@@ -81,7 +81,7 @@ internal fun HomeScreen(
     val profile by authViewModel.profile.collectAsState()
     val split by planViewModel.weeklySplit.collectAsState()
     val todayTotals by logViewModel.todayTotals.collectAsState()
-    val activeSession by logViewModel.activeSession.collectAsState()
+    val hasOpenSession by logViewModel.hasOpenSession.collectAsState()
     val plannedExerciseIds by logViewModel.plannedExerciseIds.collectAsState()
     val reminder by planViewModel.reminderSettings.collectAsState()
     val statsState by statsViewModel.state.collectAsState()
@@ -156,7 +156,7 @@ internal fun HomeScreen(
         // Hero today card.
         TodayHeroCard(
             focus = focus,
-            isActive = activeSession != null,
+            isActive = hasOpenSession,
             plannedCount = plannedExerciseIds.size,
             streak = statsState.streakDays,
             todayTotals = todayTotals,

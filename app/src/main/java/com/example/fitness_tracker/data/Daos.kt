@@ -52,6 +52,15 @@ interface SessionDao {
     )
     suspend fun mostRecentOpenSince(sinceMs: Long): WorkoutSession?
 
+    /** Count of still-open (not ended) sessions that have at least one logged set.
+     * Empty auto-started sessions are ignored so Home doesn't get stuck showing
+     * "in progress" for an abandoned/empty session. */
+    @Query(
+        "SELECT COUNT(*) FROM workout_sessions s WHERE s.endedAt IS NULL " +
+            "AND EXISTS (SELECT 1 FROM set_entries e WHERE e.sessionId = s.id)"
+    )
+    fun observeOpenCount(): Flow<Int>
+
     @Insert
     suspend fun insert(session: WorkoutSession): Long
 

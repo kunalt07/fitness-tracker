@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
@@ -298,9 +299,21 @@ class FitnessRepository(
     val templateDominantGroups: Flow<List<TemplateMuscleRow>> = templateDao.observeDominantGroups()
     val weeklySplit: Flow<List<WeeklySplitDay>> = weeklySplitDao.observeAll()
 
+    /** Live flag: is any workout session still open (not ended)? DB-backed, so it
+     * stays correct across screens/ViewModel instances. */
+    val hasOpenSession: Flow<Boolean> = sessionDao.observeOpenCount().map { it > 0 }
+
     /** Today's pending plan exercise IDs in order. Persisted; auto-clears on date change. */
     val pendingPlan: Flow<List<Long>> =
         dayKeyFlow.flatMapLatest { pendingPlanDao.observeForDay(it) }
+
+    // One-shot signal: set when a plan is applied from the Plan tab so the Log
+    // screen opens straight into the in-progress (set-logging) view instead of
+    // the muscle grid. Log consumes it after handling.
+    private val _openSessionOnLog = MutableStateFlow(false)
+    val openSessionOnLog: StateFlow<Boolean> = _openSessionOnLog.asStateFlow()
+    fun requestOpenSessionOnLog() { _openSessionOnLog.value = true }
+    fun consumeOpenSessionOnLog() { _openSessionOnLog.value = false }
 
     suspend fun stagePlan(exerciseIds: List<Long>) {
         val day = todayKey()

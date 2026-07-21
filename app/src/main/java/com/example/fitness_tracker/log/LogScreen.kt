@@ -69,6 +69,7 @@ import com.example.fitness_tracker.ui.ExercisePickerDialog
 import com.example.fitness_tracker.ui.MinimalTextField
 import com.example.fitness_tracker.ui.PillChip
 import com.example.fitness_tracker.ui.PillCta
+import com.example.fitness_tracker.ui.PillCtaSecondary
 import com.example.fitness_tracker.ui.QuietTextButton
 import com.example.fitness_tracker.ui.ScreenTitle
 import kotlinx.coroutines.launch
@@ -95,7 +96,25 @@ fun LogScreen(
     val critique by viewModel.critique.collectAsState()
     val templateMuscle by viewModel.templateMuscleByTemplateId.collectAsState()
     val todayTotals by viewModel.todayTotals.collectAsState()
-    var chooserMuscle by rememberSaveable { mutableStateOf<String?>(null) }
+    // Toggle-selected muscle groups. Start workout queues every exercise across
+    // the selected groups; empty selection starts a plain empty session.
+    var selectedMuscles by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    // The Log tab always opens on the muscle grid ("workout page"). During an
+    // active session, "Continue session" flips this to show the set-logging view.
+    // Plain remember (not saveable) so re-entering the Log tab resets to the grid.
+    var viewingSession by remember { mutableStateOf(false) }
+    // When a plan was applied from the Plan tab, open straight into the session view.
+    val openSessionOnLog by viewModel.openSessionOnLog.collectAsState()
+    LaunchedEffect(openSessionOnLog) {
+        if (openSessionOnLog) {
+            viewingSession = true
+            viewModel.consumeOpenSessionRequest()
+        }
+    }
+    // When the session ends, snap back to the muscle grid.
+    LaunchedEffect(active) {
+        if (active == null) viewingSession = false
+    }
     val snackbarHost = com.example.fitness_tracker.LocalSnackbarHost.current
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     var sheetMode by rememberSaveable(stateSaver = SheetModeSaver) {
@@ -130,38 +149,83 @@ fun LogScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = topInset)
-                // Idle keeps Start inline in the scroll, so it only needs to clear
-                // the nav bar. Active reserves room for the floating dock.
-                .padding(bottom = bottomInset + if (active == null) 112.dp else 160.dp),
+                // Grid view keeps its CTA inline (grid weight fills the height), so it
+                // only needs the nav-bar inset. The session view reserves room for the
+                // floating dock.
+                .padding(bottom = bottomInset + if (active != null && viewingSession) 160.dp else 0.dp),
         ) {
-        ScreenTitle(if (active == null) "Workout" else "In progress")
+        // The grid is the default "workout page". The set-logging view only shows
+        // while a session is active AND the user has tapped "Continue session".
+        val inSession = active != null && viewingSession
+
+        ScreenTitle(if (inSession) "In progress" else "Workout")
         TodayProgressLine(totals = todayTotals)
 
-        if (active != null && plannedExercises.isNotEmpty()) {
+        if (inSession && plannedExercises.isNotEmpty()) {
             PlannedRow(
                 exercises = plannedExercises,
                 onTap = { id -> sheetMode = SheetMode.New(prefillExerciseId = id) },
             )
         }
 
-        if (active == null) {
+        if (!inSession) {
             MuscleGroupGrid(
-                selected = chooserMuscle,
-                onSelectMuscleGroup = { chooserMuscle = it },
+                selected = selectedMuscles,
+                onToggleMuscleGroup = { group ->
+                    selectedMuscles = if (group in selectedMuscles) {
+                        selectedMuscles - group
+                    } else {
+                        selectedMuscles + group
+                    }
+                },
                 modifier = Modifier.weight(1f),
             )
-            // Start lives inline at the end of the scroll (not floating), so the
-            // grid never tucks behind it.
+            // CTA lives inline at the end of the grid (not floating), so it never
+            // tucks behind anything.
+            val selectedIds = {
+                exercises.filter { it.muscleGroup in selectedMuscles }.map { it.id }
+            }
             Box(modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
-                PillCta(
-                    label = "Start workout",
-                    onClick = { viewModel.startSession() },
-                )
+                if (active == null) {
+                    val count = selectedMuscles.size
+                    PillCta(
+                        label = if (count == 0) {
+                            "Start workout"
+                        } else {
+                            "Start workout ($count ${if (count == 1) "group" else "groups"})"
+                        },
+                        onClick = {
+                            viewModel.startWorkout(selectedIds())
+                            selectedMuscles = emptyList()
+                            viewingSession = true
+                        },
+                    )
+                } else {
+                    // A session is already running: continue it, or replace its
+                    // queued plan with the currently selected groups.
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        PillCta(
+                            label = "Continue session",
+                            onClick = { viewingSession = true },
+                            modifier = Modifier.weight(1f),
+                        )
+                        PillCtaSecondary(
+                            label = "Change group",
+                            enabled = selectedMuscles.isNotEmpty(),
+                            onClick = {
+                                viewModel.startWorkout(selectedIds())
+                                selectedMuscles = emptyList()
+                                viewingSession = true
+                            },
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                        )
+                    }
+                }
             }
         }
 
         when {
-            active == null -> Unit
+            !inSession -> Unit
             sets.isEmpty() -> CenteredHint("Tap “Log set” to begin.")
             else -> {
                 val groups = remember(sets) { groupConsecutiveSets(sets) }
@@ -207,10 +271,10 @@ fun LogScreen(
             }
         }
 
-        // Floating dock — only during an active session. Holds the action row
-        // (repeat / end), optional rest banner, and the Log-set CTA. Idle has
-        // its Start button inline in the scroll instead, so nothing overlays it.
-        if (active != null) {
+        // Floating dock — only while viewing an active session. Holds the action
+        // row (repeat / end), optional rest banner, and the Log-set CTA. The grid
+        // view has its CTA inline in the scroll instead, so nothing overlays it.
+        if (active != null && viewingSession) {
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -284,21 +348,6 @@ fun LogScreen(
             onSave = { name -> viewModel.confirmEndSession(name.takeIf { it.isNotBlank() }) },
             onSkip = { viewModel.confirmEndSession(null) },
             onDismiss = { viewModel.dismissSaveTemplatePrompt() },
-        )
-    }
-
-    val chooser = chooserMuscle
-    if (chooser != null) {
-        val groupExercises = exercises.filter { it.muscleGroup == chooser }
-        ExerciseChooserSheet(
-            muscle = chooser,
-            exercises = groupExercises,
-            onConfirm = { ids ->
-                // Empty pick = queue the whole group (per the sheet's copy).
-                viewModel.startWorkout(ids.ifEmpty { groupExercises.map { it.id } })
-                chooserMuscle = null
-            },
-            onDismiss = { chooserMuscle = null },
         )
     }
 
@@ -965,17 +1014,34 @@ private val MUSCLE_CARDS = listOf(
 
 private val BACK_CARD = MuscleCardSpec("Back", R.drawable.back)
 
+// Above this many vertical units (two-up rows + the full-width Back) the grid
+// scrolls at a fixed tile height instead of shrinking tiles to fit the screen.
+private const val MUSCLE_MAX_UNITS_BEFORE_SCROLL = 4
+private val MUSCLE_TILE_SCROLL_HEIGHT = 150.dp
+
 @Composable
 private fun MuscleGroupGrid(
-    selected: String?,
-    onSelectMuscleGroup: (String) -> Unit,
+    selected: List<String>,
+    onToggleMuscleGroup: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val rows = MUSCLE_CARDS.chunked(2)
+    // Vertical units: one per two-up row + the full-width Back card.
+    val units = rows.size + 1
+    val scroll = units > MUSCLE_MAX_UNITS_BEFORE_SCROLL
+
+    // When it fits, weight makes tiles divide the screen height (no gaps). When
+    // there are too many, switch to a scrolling column at a fixed tile height.
+    val columnModifier = modifier
+        .fillMaxWidth()
+        .padding(horizontal = 24.dp)
+        .padding(bottom = 16.dp)
+        .let { if (scroll) it.verticalScroll(rememberScrollState()) else it }
+    // Fill height (weight) vs. fixed height (scroll) per tile.
+    val tileModifier: Modifier = if (scroll) Modifier.height(MUSCLE_TILE_SCROLL_HEIGHT) else Modifier
+
     Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp)
-            .padding(bottom = 16.dp),
+        modifier = columnModifier,
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(
@@ -985,16 +1051,18 @@ private fun MuscleGroupGrid(
             letterSpacing = 1.sp,
             color = Color(0xFF888888),
         )
-        MUSCLE_CARDS.chunked(2).forEach { rowCards ->
+        rows.forEach { rowCards ->
             Row(
-                modifier = Modifier.fillMaxWidth().weight(1f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (scroll) tileModifier else Modifier.weight(1f)),
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 rowCards.forEach { card ->
                     MuscleCard(
                         spec = card,
-                        selected = card.name == selected,
-                        onClick = { onSelectMuscleGroup(card.name) },
+                        selected = card.name in selected,
+                        onClick = { onToggleMuscleGroup(card.name) },
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                     )
                 }
@@ -1003,9 +1071,11 @@ private fun MuscleGroupGrid(
         // 7th card — Back, spanning the full width.
         MuscleCard(
             spec = BACK_CARD,
-            selected = BACK_CARD.name == selected,
-            onClick = { onSelectMuscleGroup(BACK_CARD.name) },
-            modifier = Modifier.fillMaxWidth().weight(1f),
+            selected = BACK_CARD.name in selected,
+            onClick = { onToggleMuscleGroup(BACK_CARD.name) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (scroll) tileModifier else Modifier.weight(1f)),
         )
     }
 }

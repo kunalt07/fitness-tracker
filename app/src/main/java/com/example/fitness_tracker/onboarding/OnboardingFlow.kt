@@ -8,6 +8,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -118,11 +120,18 @@ fun OnboardingFlow(
                             planViewModel.saveWeeklySplit(preset.toRows())
                             next()
                         },
+                        onCustom = { rows ->
+                            planViewModel.saveWeeklySplit(rows)
+                            next()
+                        },
                         onSkip = { next() },
                     )
                     Step.WeightGoal -> WeightGoalStep(
-                        onSave = { current, target ->
+                        onSave = { current, target, calories ->
                             dailyViewModel.saveBodyWeight(current, target)
+                            if (calories != null && calories > 0) {
+                                dietViewModel.saveCalorieGoal(calories, null)
+                            }
                             next()
                         },
                         onSkip = { next() },
@@ -201,29 +210,156 @@ private enum class SplitPreset(val label: String, val days: List<String>, val ta
     }
 }
 
+private val DAY_FULL_ONB = listOf(
+    "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
+)
+
+// Quick-pick focuses for the custom split editor — split styles + muscle groups.
+private val SPLIT_FOCUS_SUGGESTIONS = listOf(
+    "Push", "Pull", "Legs", "Upper", "Lower", "Full body",
+    "Chest", "Back", "Shoulders", "Arms", "Biceps", "Triceps",
+    "Quads", "Hamstrings", "Glutes", "Calves", "Core", "Cardio", "Mobility", "Rest",
+)
+
+@Composable
+private fun FocusSuggestionChip(label: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(50),
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
 @Composable
 private fun SplitStep(
     onPick: (SplitPreset) -> Unit,
+    onCustom: (List<WeeklySplitDay>) -> Unit,
     onSkip: () -> Unit,
 ) {
+    var customizing by rememberSaveable { mutableStateOf(false) }
+    var focuses by rememberSaveable { mutableStateOf(List(7) { "" }) }
+    // Day row currently focused — shows its suggestion chips below the field.
+    var focusedDay by rememberSaveable { mutableStateOf(-1) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState()),
     ) {
-        Title("Pick a weekly split")
-        Subtitle("You can fine-tune any day later in the Plan tab.")
+        if (!customizing) {
+            Title("Pick a weekly split")
+            Subtitle("Choose a preset or build your own. Fine-tune any day later in the Plan tab.")
 
-        Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-        SplitPreset.entries.forEach { preset ->
-            PresetCard(preset = preset, onClick = { onPick(preset) })
-            Spacer(modifier = Modifier.height(12.dp))
+            SplitPreset.entries.forEach { preset ->
+                PresetCard(preset = preset, onClick = { onPick(preset) })
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            CustomSplitCard(onClick = { customizing = true })
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            SkipRow(label = "Skip for now", onSkip = onSkip)
+        } else {
+            Title("Build your week")
+            Subtitle("Type what you train each day. Leave a day blank for rest.")
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            DAY_FULL_ONB.forEachIndexed { i, day ->
+                MinimalTextField(
+                    value = focuses[i],
+                    onValueChange = { v ->
+                        focuses = focuses.toMutableList().also { it[i] = v }
+                    },
+                    label = day,
+                    placeholder = "Rest day",
+                    singleLine = true,
+                    modifier = Modifier.onFocusChanged { if (it.isFocused) focusedDay = i },
+                )
+                if (focusedDay == i) {
+                    val q = focuses[i].trim().lowercase()
+                    val matches = SPLIT_FOCUS_SUGGESTIONS.filter { s ->
+                        q.isEmpty() || (s.lowercase().contains(q) && !s.equals(focuses[i].trim(), ignoreCase = true))
+                    }
+                    if (matches.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            matches.forEach { s ->
+                                FocusSuggestionChip(label = s) {
+                                    focuses = focuses.toMutableList().also { it[i] = s }
+                                }
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            PillCta(
+                label = "Save split",
+                onClick = {
+                    val rows = focuses.mapIndexed { i, f ->
+                        val focus = f.trim().let { if (it.equals("Rest", ignoreCase = true)) "" else it }
+                        WeeklySplitDay(dayOfWeek = i + 1, focus = focus)
+                    }
+                    onCustom(rows)
+                },
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            SkipRow(label = "Back to presets", onSkip = { customizing = false })
         }
+    }
+}
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        SkipRow(label = "Skip for now", onSkip = onSkip)
+@Composable
+private fun CustomSplitCard(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                shape = RoundedCornerShape(20.dp),
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 18.dp, vertical = 16.dp),
+    ) {
+        Column {
+            Text(
+                text = "Build my own",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                text = "Set each day's focus yourself",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
     }
 }
 
@@ -288,11 +424,12 @@ private fun PresetCard(preset: SplitPreset, onClick: () -> Unit) {
 
 @Composable
 private fun WeightGoalStep(
-    onSave: (currentKg: Double, targetKg: Double?) -> Unit,
+    onSave: (currentKg: Double, targetKg: Double?, calorieGoal: Int?) -> Unit,
     onSkip: () -> Unit,
 ) {
     var current by rememberSaveable { mutableStateOf("") }
     var target by rememberSaveable { mutableStateOf("") }
+    var calories by rememberSaveable { mutableStateOf("") }
 
     val currentKg = current.trim().toDoubleOrNull()
     val canContinue = currentKg != null && currentKg > 0
@@ -331,6 +468,19 @@ private fun WeightGoalStep(
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         )
 
+        Spacer(modifier = Modifier.height(16.dp))
+
+        SectionLabel("Daily calorie goal (kcal)")
+        Spacer(modifier = Modifier.height(6.dp))
+        MinimalTextField(
+            value = calories,
+            onValueChange = { calories = it.take(5).filter { c -> c.isDigit() } },
+            label = "Calories",
+            placeholder = "Optional · e.g. 2200",
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        )
+
         Spacer(modifier = Modifier.height(28.dp))
 
         PillCta(
@@ -338,7 +488,7 @@ private fun WeightGoalStep(
             enabled = canContinue,
             onClick = {
                 val cur = currentKg ?: return@PillCta
-                onSave(cur, target.trim().toDoubleOrNull())
+                onSave(cur, target.trim().toDoubleOrNull(), calories.trim().toIntOrNull())
             },
         )
         Spacer(modifier = Modifier.height(8.dp))
