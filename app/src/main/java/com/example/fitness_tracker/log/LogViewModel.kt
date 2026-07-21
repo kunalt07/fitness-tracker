@@ -410,6 +410,15 @@ class LogViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Start a workout from exercise names — resolves (creating any missing) to
+     * IDs first, so the picker can offer catalog moves not yet in the DB. */
+    fun startWorkoutByNames(names: List<String>) {
+        viewModelScope.launch {
+            val ids = repo.resolveOrCreateExercises(names)
+            if (ids.isNotEmpty()) repo.stagePlan(ids) else startSession()
+        }
+    }
+
     fun startFromTemplate(templateId: Long) {
         viewModelScope.launch {
             val ids = repo.exerciseIdsForTemplate(templateId)

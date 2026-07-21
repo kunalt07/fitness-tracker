@@ -45,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -96,9 +97,12 @@ fun LogScreen(
     val critique by viewModel.critique.collectAsState()
     val templateMuscle by viewModel.templateMuscleByTemplateId.collectAsState()
     val todayTotals by viewModel.todayTotals.collectAsState()
-    // Toggle-selected muscle groups. Start workout queues every exercise across
-    // the selected groups; empty selection starts a plain empty session.
-    var selectedMuscles by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    // Per-group chosen exercise NAMES. Tapping a muscle card opens a searchable
+    // picker; the exercises picked there accumulate here (one entry per touched
+    // group). Start resolves names → IDs. Plain remember (resets on tab re-entry).
+    val chosenByGroup = remember { androidx.compose.runtime.mutableStateMapOf<String, List<String>>() }
+    // Which group's exercise picker is open (null = none).
+    var chooserGroup by remember { mutableStateOf<String?>(null) }
     // The Log tab always opens on the muscle grid ("workout page"). During an
     // active session, "Continue session" flips this to show the set-logging view.
     // Plain remember (not saveable) so re-entering the Log tab resets to the grid.
@@ -170,39 +174,32 @@ fun LogScreen(
 
         if (!inSession) {
             MuscleGroupGrid(
-                selected = selectedMuscles,
-                onToggleMuscleGroup = { group ->
-                    selectedMuscles = if (group in selectedMuscles) {
-                        selectedMuscles - group
-                    } else {
-                        selectedMuscles + group
-                    }
-                },
+                selected = chosenByGroup.keys,
+                onCardClick = { group -> chooserGroup = group },
                 modifier = Modifier.weight(1f),
             )
+            // Union of every group's picked exercise names, in a stable order.
+            val chosenNames = chosenByGroup.values.flatten().distinct()
             // CTA lives inline at the end of the grid (not floating), so it never
             // tucks behind anything.
-            val selectedIds = {
-                exercises.filter { it.muscleGroup in selectedMuscles }.map { it.id }
-            }
             Box(modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) {
                 if (active == null) {
-                    val count = selectedMuscles.size
+                    val count = chosenNames.size
                     PillCta(
                         label = if (count == 0) {
                             "Start workout"
                         } else {
-                            "Start workout ($count ${if (count == 1) "group" else "groups"})"
+                            "Start workout ($count ${if (count == 1) "exercise" else "exercises"})"
                         },
                         onClick = {
-                            viewModel.startWorkout(selectedIds())
-                            selectedMuscles = emptyList()
+                            viewModel.startWorkoutByNames(chosenNames)
+                            chosenByGroup.clear()
                             viewingSession = true
                         },
                     )
                 } else {
                     // A session is already running: continue it, or replace its
-                    // queued plan with the currently selected groups.
+                    // queued plan with the currently picked exercises.
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         PillCta(
                             label = "Continue session",
@@ -211,10 +208,10 @@ fun LogScreen(
                         )
                         PillCtaSecondary(
                             label = "Change group",
-                            enabled = selectedMuscles.isNotEmpty(),
+                            enabled = chosenNames.isNotEmpty(),
                             onClick = {
-                                viewModel.startWorkout(selectedIds())
-                                selectedMuscles = emptyList()
+                                viewModel.startWorkoutByNames(chosenNames)
+                                chosenByGroup.clear()
                                 viewingSession = true
                             },
                             modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -355,6 +352,39 @@ fun LogScreen(
         CritiqueSheet(
             state = critique,
             onDismiss = { viewModel.dismissCritique() },
+        )
+    }
+
+    // Searchable exercise picker for a tapped muscle group. Recommended moves
+    // show by default; the search box filters the full catalog. Picks accumulate
+    // per group (by name). "Remove" drops the group from the workout.
+    val cg = chooserGroup
+    if (cg != null) {
+        // Catalog for this group, plus any custom DB exercises tagged to it that
+        // aren't already in the catalog (so user-made exercises still appear).
+        val catalog = remember(cg, exercises) {
+            val base = EXERCISE_CATALOG[cg].orEmpty()
+            val known = base.map { it.name.lowercase() }.toSet()
+            val customs = exercises
+                .filter { it.muscleGroup == cg && it.name.lowercase() !in known }
+                .map { CatalogExercise(it.name, recommended = false, bodyweight = false) }
+            base + customs
+        }
+        ExerciseChooserSheet(
+            muscle = cg,
+            catalog = catalog,
+            preselected = chosenByGroup[cg].orEmpty(),
+            onConfirm = { names ->
+                // Leave all unchecked → queue the whole recommended set.
+                chosenByGroup[cg] = names.ifEmpty {
+                    catalog.filter { it.recommended }.map { it.name }
+                }
+                chooserGroup = null
+            },
+            onRemove = if (chosenByGroup.containsKey(cg)) {
+                { chosenByGroup.remove(cg); chooserGroup = null }
+            } else null,
+            onDismiss = { chooserGroup = null },
         )
     }
 
@@ -1021,8 +1051,8 @@ private val MUSCLE_TILE_SCROLL_HEIGHT = 150.dp
 
 @Composable
 private fun MuscleGroupGrid(
-    selected: List<String>,
-    onToggleMuscleGroup: (String) -> Unit,
+    selected: Set<String>,
+    onCardClick: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val rows = MUSCLE_CARDS.chunked(2)
@@ -1062,7 +1092,7 @@ private fun MuscleGroupGrid(
                     MuscleCard(
                         spec = card,
                         selected = card.name in selected,
-                        onClick = { onToggleMuscleGroup(card.name) },
+                        onClick = { onCardClick(card.name) },
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                     )
                 }
@@ -1072,7 +1102,7 @@ private fun MuscleGroupGrid(
         MuscleCard(
             spec = BACK_CARD,
             selected = BACK_CARD.name in selected,
-            onClick = { onToggleMuscleGroup(BACK_CARD.name) },
+            onClick = { onCardClick(BACK_CARD.name) },
             modifier = Modifier
                 .fillMaxWidth()
                 .then(if (scroll) tileModifier else Modifier.weight(1f)),
@@ -1131,12 +1161,19 @@ private fun MuscleCard(
 @Composable
 private fun ExerciseChooserSheet(
     muscle: String,
-    exercises: List<Exercise>,
-    onConfirm: (List<Long>) -> Unit,
+    catalog: List<CatalogExercise>,
+    onConfirm: (List<String>) -> Unit,
     onDismiss: () -> Unit,
+    preselected: List<String> = emptyList(),
+    onRemove: (() -> Unit)? = null,
 ) {
     val sheetState = rememberFullSheetState()
-    val chosen = remember { mutableStateListOf<Long>() }
+    // Chosen exercise names (seeded from anything already picked for this group).
+    val chosen = remember(preselected) { preselected.toMutableStateList() }
+    var query by rememberSaveable { mutableStateOf("") }
+    val q = query.trim()
+
+    fun toggle(name: String) { if (name in chosen) chosen.remove(name) else chosen.add(name) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1157,63 +1194,47 @@ private fun ExerciseChooserSheet(
                 style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            if (exercises.isEmpty()) {
-                Text(
-                    "No $muscle exercises yet. Starting will open an empty session you can log into.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                Text(
-                    "Pick the ones you’ll do — they’ll show up in your log. Leave all unchecked to queue the whole group.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                exercises.forEach { ex ->
-                    val isChosen = ex.id in chosen
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                if (isChosen) chosen.remove(ex.id) else chosen.add(ex.id)
-                            }
-                            .padding(vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(22.dp)
-                                .clip(RoundedCornerShape(50))
-                                .background(
-                                    if (isChosen) Color(0xFF7B6FD4) else Color.Transparent,
-                                )
-                                .border(
-                                    1.5.dp,
-                                    if (isChosen) Color(0xFF7B6FD4)
-                                    else MaterialTheme.colorScheme.outline,
-                                    RoundedCornerShape(50),
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            if (isChosen) {
-                                Icon(
-                                    imageVector = Icons.Filled.Check,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(14.dp),
-                                )
-                            }
-                        }
-                        Text(
-                            ex.name,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(start = 12.dp),
-                        )
+
+            // Search box — filters the full catalog for this muscle group.
+            MinimalTextField(
+                value = query,
+                onValueChange = { query = it },
+                label = "Search $muscle",
+                placeholder = "e.g. incline, cable, curl…",
+                singleLine = true,
+            )
+
+            if (q.isNotBlank()) {
+                // Search mode: flat, filtered list across the whole catalog.
+                val matches = catalog.filter { it.name.contains(q, ignoreCase = true) }
+                if (matches.isEmpty()) {
+                    Text(
+                        "No match. Tap “Add “$q”” to log it anyway.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    ExerciseChooserRow(name = q, isChosen = q in chosen, onToggle = { toggle(q) })
+                } else {
+                    matches.forEach { ex ->
+                        ExerciseChooserRow(ex.name, ex.name in chosen, { toggle(ex.name) })
                     }
+                }
+            } else {
+                // Default mode: the moves famous coaches/athletes program most.
+                Text(
+                    "Recommended picks. Search above for every $muscle movement.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                val recommended = catalog.filter { it.recommended }
+                val (bw, gear) = recommended.partition { it.bodyweight }
+                if (gear.isNotEmpty()) {
+                    ChooserSectionLabel("With equipment")
+                    gear.forEach { ex -> ExerciseChooserRow(ex.name, ex.name in chosen, { toggle(ex.name) }) }
+                }
+                if (bw.isNotEmpty()) {
+                    ChooserSectionLabel("Bodyweight · no gear")
+                    bw.forEach { ex -> ExerciseChooserRow(ex.name, ex.name in chosen, { toggle(ex.name) }) }
                 }
             }
 
@@ -1222,16 +1243,77 @@ private fun ExerciseChooserSheet(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                if (onRemove != null) {
+                    QuietTextButton(label = "Remove", onClick = onRemove)
+                    Spacer(modifier = Modifier.padding(horizontal = 4.dp))
+                }
                 QuietTextButton(label = "Cancel", onClick = onDismiss)
                 Spacer(modifier = Modifier.padding(horizontal = 4.dp))
                 PillCta(
-                    label = if (chosen.isEmpty()) "Start workout"
-                    else "Add ${chosen.size} to log",
+                    label = if (chosen.isEmpty()) "Add" else "Add ${chosen.size}",
+                    // Greyed out until at least one exercise is chosen.
+                    enabled = chosen.isNotEmpty(),
                     onClick = { onConfirm(chosen.toList()) },
                     modifier = Modifier.fillMaxWidth(0.5f),
                 )
             }
         }
+    }
+}
+
+/** Small caps section header inside the exercise picker. */
+@Composable
+private fun ChooserSectionLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Medium,
+        letterSpacing = 1.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 6.dp),
+    )
+}
+
+/** One selectable exercise row (tick pill + name) in the picker. */
+@Composable
+private fun ExerciseChooserRow(name: String, isChosen: Boolean, onToggle: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onToggle)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .clip(RoundedCornerShape(50))
+                .background(if (isChosen) Color(0xFF7B6FD4) else Color.Transparent)
+                .border(
+                    1.5.dp,
+                    if (isChosen) Color(0xFF7B6FD4) else MaterialTheme.colorScheme.outline,
+                    RoundedCornerShape(50),
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (isChosen) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(14.dp),
+                )
+            }
+        }
+        Text(
+            name,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 12.dp),
+        )
     }
 }
 

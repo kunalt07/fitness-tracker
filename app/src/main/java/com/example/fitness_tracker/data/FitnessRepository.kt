@@ -726,6 +726,56 @@ class FitnessRepository(
             Exercise(name = "Row", muscleGroup = "Cardio", kind = ExerciseKind.DISTANCE),
             Exercise(name = "Elliptical", muscleGroup = "Cardio", kind = ExerciseKind.DISTANCE),
             Exercise(name = "Jump Rope", muscleGroup = "Cardio", kind = ExerciseKind.TIME),
+
+            // --- Bodyweight / no-gear moves (backfilled into existing installs) ---
+            // Chest
+            Exercise(name = "Diamond Push-Up", muscleGroup = "Chest", kind = ExerciseKind.REPS),
+            Exercise(name = "Wide Push-Up", muscleGroup = "Chest", kind = ExerciseKind.REPS),
+            Exercise(name = "Decline Push-Up", muscleGroup = "Chest", kind = ExerciseKind.REPS),
+            // Triceps
+            Exercise(name = "Bench Dip", muscleGroup = "Triceps", kind = ExerciseKind.REPS),
+            Exercise(name = "Close-Grip Push-Up", muscleGroup = "Triceps", kind = ExerciseKind.REPS),
+            // Legs
+            Exercise(name = "Bodyweight Squat", muscleGroup = "Legs", kind = ExerciseKind.REPS),
+            Exercise(name = "Bulgarian Split Squat", muscleGroup = "Legs", kind = ExerciseKind.REPS),
+            Exercise(name = "Glute Bridge", muscleGroup = "Legs", kind = ExerciseKind.REPS),
+            Exercise(name = "Wall Sit", muscleGroup = "Legs", kind = ExerciseKind.TIME),
+            Exercise(name = "Jump Squat", muscleGroup = "Legs", kind = ExerciseKind.REPS),
+            Exercise(name = "Step-Up", muscleGroup = "Legs", kind = ExerciseKind.REPS),
+            // Shoulders
+            Exercise(name = "Pike Push-Up", muscleGroup = "Shoulders", kind = ExerciseKind.REPS),
+            Exercise(name = "Handstand Hold", muscleGroup = "Shoulders", kind = ExerciseKind.TIME),
+            // Core
+            Exercise(name = "Mountain Climber", muscleGroup = "Core", kind = ExerciseKind.REPS),
+            Exercise(name = "Hollow Hold", muscleGroup = "Core", kind = ExerciseKind.TIME),
+            Exercise(name = "V-Up", muscleGroup = "Core", kind = ExerciseKind.REPS),
+            Exercise(name = "Leg Raise", muscleGroup = "Core", kind = ExerciseKind.REPS),
+            // Back
+            Exercise(name = "Inverted Row", muscleGroup = "Back", kind = ExerciseKind.REPS),
+            Exercise(name = "Superman", muscleGroup = "Back", kind = ExerciseKind.REPS),
+            // Cardio
+            Exercise(name = "Jumping Jacks", muscleGroup = "Cardio", kind = ExerciseKind.TIME),
+            Exercise(name = "High Knees", muscleGroup = "Cardio", kind = ExerciseKind.TIME),
+            Exercise(name = "Burpee", muscleGroup = "Cardio", kind = ExerciseKind.REPS),
         )
+
+        /** Names (lowercased) that need no equipment — used only to group the
+         * exercise picker into "Bodyweight" vs "With equipment" sections. */
+        private val BODYWEIGHT_NAMES: Set<String> = setOf(
+            // pre-existing bodyweight defaults
+            "push-up", "dip", "lunge", "calf raise", "pull-up", "chin-up",
+            "plank", "crunch", "hanging leg raise", "russian twist", "sit-up",
+            "bicycle crunch", "dead bug", "jump rope",
+            // new bodyweight moves added above
+            "diamond push-up", "wide push-up", "decline push-up", "bench dip",
+            "close-grip push-up", "bodyweight squat", "bulgarian split squat",
+            "glute bridge", "wall sit", "jump squat", "step-up", "pike push-up",
+            "handstand hold", "mountain climber", "hollow hold", "v-up",
+            "leg raise", "inverted row", "superman", "jumping jacks", "high knees",
+            "burpee",
+        )
+
+        /** True when an exercise needs no equipment/gear (by name, case-insensitive). */
+        fun isBodyweight(name: String): Boolean = name.trim().lowercase() in BODYWEIGHT_NAMES
     }
 }
