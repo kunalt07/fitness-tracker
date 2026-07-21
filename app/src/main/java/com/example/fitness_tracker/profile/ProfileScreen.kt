@@ -1,7 +1,20 @@
 package com.example.fitness_tracker.profile
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.WbSunny
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.IntOffset
+import com.example.fitness_tracker.ui.theme.resolveDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -85,7 +98,6 @@ fun ProfileScreen(
 
     var confirmingClear by remember { mutableStateOf(false) }
     var editingProfile by remember { mutableStateOf(false) }
-    var themePicker by remember { mutableStateOf(false) }
     var confirmingRestore by remember { mutableStateOf<android.net.Uri?>(null) }
 
     val context = LocalContext.current
@@ -240,15 +252,9 @@ fun ProfileScreen(
             modifier = Modifier.padding(start = 56.dp),
             color = MaterialTheme.colorScheme.outlineVariant,
         )
-        SettingsRow(
-            icon = Icons.Outlined.Brightness6,
-            title = "Theme",
-            subtitle = when (themeMode) {
-                ThemeMode.SYSTEM -> "System default"
-                ThemeMode.LIGHT -> "Light"
-                ThemeMode.DARK -> "Dark"
-            },
-            onClick = { themePicker = true },
+        ThemeToggleRow(
+            isDark = themeMode.resolveDarkTheme(),
+            onChange = { dark -> themeStore.set(if (dark) ThemeMode.DARK else ThemeMode.LIGHT) },
         )
 
         Spacer(modifier = Modifier.height(28.dp))
@@ -362,17 +368,6 @@ fun ProfileScreen(
         )
     }
 
-    if (themePicker) {
-        ThemePickerDialog(
-            current = themeMode,
-            onPick = {
-                themeStore.set(it)
-                themePicker = false
-            },
-            onDismiss = { themePicker = false },
-        )
-    }
-
     if (editingProfile) {
         EditProfileDialog(
             initialName = profile?.name.orEmpty(),
@@ -386,53 +381,84 @@ fun ProfileScreen(
     }
 }
 
+/** Theme row with a sliding sun/moon toggle — sun = light, moon = dark. The
+ * thumb slides between the two icons; tapping either side (or the track) flips. */
 @Composable
-private fun ThemePickerDialog(
-    current: ThemeMode,
-    onPick: (ThemeMode) -> Unit,
-    onDismiss: () -> Unit,
+private fun ThemeToggleRow(
+    isDark: Boolean,
+    onChange: (Boolean) -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Done") }
-        },
-        title = { Text("Theme") },
-        text = {
-            Column {
-                ThemeOption("System default", ThemeMode.SYSTEM, current, onPick)
-                ThemeOption("Light", ThemeMode.LIGHT, current, onPick)
-                ThemeOption("Dark", ThemeMode.DARK, current, onPick)
-            }
-        },
+    val thumbShift by animateFloatAsState(
+        targetValue = if (isDark) 1f else 0f,
+        animationSpec = tween(280, easing = FastOutSlowInEasing),
+        label = "theme-thumb",
     )
-}
-
-@Composable
-private fun ThemeOption(
-    label: String,
-    value: ThemeMode,
-    current: ThemeMode,
-    onPick: (ThemeMode) -> Unit,
-) {
-    val selected = value == current
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onPick(value) }
-            .padding(vertical = 8.dp),
+            .padding(horizontal = 24.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RadioButton(
-            selected = selected,
-            onClick = { onPick(value) },
+        Icon(
+            imageVector = Icons.Outlined.Brightness6,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.size(24.dp),
         )
-        Spacer(modifier = Modifier.size(8.dp))
+        Spacer(modifier = Modifier.size(20.dp))
         Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge,
+            text = "Theme",
+            style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
         )
+
+        // Sliding track: two icon slots (sun / moon) with a highlighted thumb.
+        val slot = 40.dp
+        Box(
+            modifier = Modifier
+                .width(slot * 2)
+                .height(40.dp)
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(50))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) { onChange(!isDark) },
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            // Thumb.
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(slot)
+                    .offset { IntOffset((thumbShift * slot.toPx()).toInt(), 0) }
+                    .padding(4.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(MaterialTheme.colorScheme.primary),
+            )
+            Row(modifier = Modifier.fillMaxSize()) {
+                Box(modifier = Modifier.size(slot), contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Outlined.WbSunny,
+                        contentDescription = "Light theme",
+                        tint = if (!isDark) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                Box(modifier = Modifier.size(slot), contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Outlined.DarkMode,
+                        contentDescription = "Dark theme",
+                        tint = if (isDark) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        }
     }
 }
 
