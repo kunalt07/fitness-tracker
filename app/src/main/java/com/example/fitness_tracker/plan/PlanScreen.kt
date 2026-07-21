@@ -8,6 +8,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,6 +24,8 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
@@ -59,6 +68,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.fitness_tracker.UiState
 import com.example.fitness_tracker.data.WeeklySplitDay
 import com.example.fitness_tracker.ui.BottomCtaBar
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import com.example.fitness_tracker.ui.MinimalTextField
 import com.example.fitness_tracker.ui.PillChip
 import com.example.fitness_tracker.ui.PillCta
@@ -103,6 +114,7 @@ fun PlanScreen(
 ) {
     var goal by rememberSaveable { mutableStateOf(GOALS.first()) }
     var duration by rememberSaveable { mutableIntStateOf(30) }
+    var showDurationDialog by rememberSaveable { mutableStateOf(false) }
     // Non-blank = train with equipment; blank = bodyweight only.
     var equipment by rememberSaveable { mutableStateOf("Full gym equipment") }
     var notes by rememberSaveable { mutableStateOf("") }
@@ -178,6 +190,24 @@ fun PlanScreen(
                                 selected = duration == d,
                                 label = "$d min",
                                 onClick = { duration = d },
+                            )
+                        }
+                        // A custom (non-preset) value rides as its own selected pill.
+                        if (duration !in DURATIONS) {
+                            item {
+                                PillChip(
+                                    selected = true,
+                                    label = "$duration min",
+                                    onClick = { showDurationDialog = true },
+                                )
+                            }
+                        }
+                        // "+" opens a small entry dialog for a custom minute count.
+                        item {
+                            PillChip(
+                                selected = false,
+                                label = "+",
+                                onClick = { showDurationDialog = true },
                             )
                         }
                     }
@@ -413,6 +443,147 @@ fun PlanScreen(
         )
     }
 
+    if (showDurationDialog) {
+        AddDurationDialog(
+            initialMinutes = duration,
+            onConfirm = { duration = it; showDurationDialog = false },
+            onDismiss = { showDurationDialog = false },
+        )
+    }
+}
+
+// Slot-machine wheel geometry: 48dp rows, 5 visible (center = selection).
+private val WHEEL_ITEM_HEIGHT = 48.dp
+private const val WHEEL_VISIBLE = 5
+
+/** Digital HH:MM:SS entry — three independent snapping wheel drums. Total is
+ * stored as whole minutes (seconds >= 30 round up), clamped to at least 1. */
+@Composable
+private fun AddDurationDialog(
+    initialMinutes: Int,
+    onConfirm: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var hours by rememberSaveable { mutableIntStateOf(initialMinutes / 60) }
+    var mins by rememberSaveable { mutableIntStateOf(initialMinutes % 60) }
+    var secs by rememberSaveable { mutableIntStateOf(30) }
+
+    val totalMin = (hours * 60 + mins + if (secs >= 30) 1 else 0).coerceAtLeast(1)
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add duration") },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                            shape = RoundedCornerShape(16.dp),
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    // Center highlight band spans all three wheels (drawn behind).
+                    Column(modifier = Modifier.align(Alignment.Center)) {
+                        androidx.compose.material3.HorizontalDivider(
+                            color = MaterialTheme.colorScheme.primary,
+                            thickness = 1.5.dp,
+                        )
+                        Spacer(modifier = Modifier.height(WHEEL_ITEM_HEIGHT))
+                        androidx.compose.material3.HorizontalDivider(
+                            color = MaterialTheme.colorScheme.primary,
+                            thickness = 1.5.dp,
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        WheelPicker(range = 0..23, initial = hours, onChange = { hours = it })
+                        WheelColon()
+                        WheelPicker(range = 0..59, initial = mins, onChange = { mins = it })
+                        WheelColon()
+                        WheelPicker(range = 0..59, initial = secs, onChange = { secs = it })
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "≈ $totalMin min",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = { QuietTextButton(label = "Set", onClick = { onConfirm(totalMin) }) },
+        dismissButton = { QuietTextButton(label = "Cancel", onClick = onDismiss) },
+    )
+}
+
+/** One snapping wheel drum for a 0..N range. Center item is the selection;
+ * neighbours dim by distance. Fires onChange on every centered-value change. */
+@Composable
+private fun WheelPicker(range: IntRange, initial: Int, onChange: (Int) -> Unit) {
+    val values = remember(range) { range.toList() }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState(
+        initialFirstVisibleItemIndex = (initial - range.first).coerceIn(0, values.lastIndex),
+    )
+    val fling = androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior(listState)
+    val density = LocalDensity.current
+    val itemPx = with(density) { WHEEL_ITEM_HEIGHT.toPx() }
+
+    // Centered index = top item + rounded fraction of a row scrolled past it.
+    val centerIndex by remember {
+        androidx.compose.runtime.derivedStateOf {
+            val extra = ((listState.firstVisibleItemScrollOffset + itemPx / 2f) / itemPx).toInt()
+            (listState.firstVisibleItemIndex + extra).coerceIn(0, values.lastIndex)
+        }
+    }
+    LaunchedEffect(centerIndex) { onChange(values[centerIndex]) }
+
+    androidx.compose.foundation.lazy.LazyColumn(
+        state = listState,
+        flingBehavior = fling,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .width(56.dp)
+            .height(WHEEL_ITEM_HEIGHT * WHEEL_VISIBLE),
+        // Top/bottom pad of 2 rows so first/last value can reach the center.
+        contentPadding = PaddingValues(vertical = WHEEL_ITEM_HEIGHT * ((WHEEL_VISIBLE - 1) / 2)),
+    ) {
+        itemsIndexed(values) { index, value ->
+            val selected = index == centerIndex
+            Box(
+                modifier = Modifier
+                    .height(WHEEL_ITEM_HEIGHT)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = value.toString().padStart(2, '0'),
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                    fontSize = if (selected) 24.sp else 18.sp,
+                    color = if (selected) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WheelColon() {
+    Text(
+        text = ":",
+        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+        fontWeight = FontWeight.Bold,
+        fontSize = 24.sp,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.padding(horizontal = 4.dp),
+    )
 }
 
 @Composable
@@ -451,69 +622,95 @@ private fun HistoryHintPill(modifier: Modifier = Modifier) {
     }
 }
 
+// Weekly split rows use dayOfWeek 1=Sunday..7=Saturday. Display Monday-first to
+// match the reference; "Th" disambiguates Thursday from Tuesday.
+private val MON_FIRST_DAYS = listOf(2, 3, 4, 5, 6, 7, 1)
+private val MON_FIRST_LABELS = listOf("M", "T", "W", "Th", "F", "S", "S")
+
 @Composable
-private fun DayPickerWithTodayDot(
+private fun DayPillRow(
     selectedDay: Int,
     todayDayOfWeek: Int,
     onDayChange: (Int) -> Unit,
     split: List<WeeklySplitDay> = emptyList(),
 ) {
-    val todayDot = MaterialTheme.colorScheme.primary
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        MON_FIRST_DAYS.forEachIndexed { i, d ->
+            val focus = split.firstOrNull { it.dayOfWeek == d }?.focus.orEmpty()
+            DayPill(
+                label = MON_FIRST_LABELS[i],
+                selected = d == selectedDay,
+                isToday = d == todayDayOfWeek,
+                focus = focus,
+                onClick = { onDayChange(d) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+/** One tall stadium day button — outlined; selected gets a thicker bright ring.
+ * Keeps the per-day muscle-color dot and the today underline mark. */
+@Composable
+private fun DayPill(
+    label: String,
+    selected: Boolean,
+    isToday: Boolean,
+    focus: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val onSurface = MaterialTheme.colorScheme.onSurface
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
-    val primaryContainer = MaterialTheme.colorScheme.primaryContainer
+    val muscleColor = if (focus.isNotBlank()) {
+        com.example.fitness_tracker.ui.theme.focusKeywordColor(focus)
+    } else null
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.Top,
+    Column(
+        modifier = modifier
+            .fillMaxHeight()
+            .clip(RoundedCornerShape(50))
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) onSurface else MaterialTheme.colorScheme.outlineVariant,
+                shape = RoundedCornerShape(50),
+            )
+            .clickable(onClick = onClick)
+            .padding(vertical = 18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        (1..7).forEach { d ->
-            val focus = split.firstOrNull { it.dayOfWeek == d }?.focus.orEmpty()
-            val isSelected = d == selectedDay
-            val isToday = d == todayDayOfWeek
-            val muscleColor = if (focus.isNotBlank()) {
-                com.example.fitness_tracker.ui.theme.focusKeywordColor(focus)
-            } else null
-
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier
-                    .background(
-                        color = if (isSelected) primaryContainer
-                        else androidx.compose.ui.graphics.Color.Transparent,
-                        shape = RoundedCornerShape(14.dp),
-                    )
-                    .clickable { onDayChange(d) }
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-            ) {
-                Text(
-                    text = DAY_SHORT[d - 1],
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (isSelected) onSurface else onSurfaceVariant,
-                )
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .background(
-                            color = muscleColor ?: if (focus.isBlank()) {
-                                androidx.compose.ui.graphics.Color.Transparent
-                            } else onSurfaceVariant.copy(alpha = 0.4f),
-                            shape = CircleShape,
-                        ),
-                )
-                Box(
-                    modifier = Modifier
-                        .size(width = 16.dp, height = 4.dp)
-                        .background(
-                            color = if (isToday) todayDot
-                            else androidx.compose.ui.graphics.Color.Transparent,
-                            shape = RoundedCornerShape(2.dp),
-                        ),
-                )
-            }
-        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleMedium,
+            color = if (selected) onSurface else onSurfaceVariant,
+        )
+        // Muscle-color dot — transparent on rest/blank days.
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .background(
+                    color = muscleColor
+                        ?: if (focus.isBlank()) androidx.compose.ui.graphics.Color.Transparent
+                        else onSurfaceVariant.copy(alpha = 0.4f),
+                    shape = CircleShape,
+                ),
+        )
+        // Today underline mark.
+        Box(
+            modifier = Modifier
+                .size(width = 14.dp, height = 3.dp)
+                .background(
+                    color = if (isToday) MaterialTheme.colorScheme.primary
+                    else androidx.compose.ui.graphics.Color.Transparent,
+                    shape = RoundedCornerShape(2.dp),
+                ),
+        )
     }
 }
 
@@ -545,22 +742,53 @@ private fun TodayBlock(
     onOpenSettings: () -> Unit,
 ) {
     val dayName = DAY_FULL[(selectedDay - 1).coerceIn(0, 6)]
-    val title = if (isToday) "Today · $dayName" else dayName
+    // Breadcrumb: "Today › Monday" when viewing today, else just the day name.
+    val breadcrumb = if (isToday) "Today  ›  $dayName" else dayName
+
+    // Big title + its color per state: focus set → muscle accent; rest → muted;
+    // no split at all → "Build your week" call to action.
+    val focusAccent = com.example.fitness_tracker.ui.theme.focusKeywordColor(focus)
+    val bigTitle = when {
+        !anySplitSet -> "Build your week"
+        focus.isBlank() -> "Rest day"
+        else -> focus
+    }
+    val bigTitleColor = when {
+        !anySplitSet -> MaterialTheme.colorScheme.onSurface
+        focus.isBlank() -> MaterialTheme.colorScheme.onSurfaceVariant
+        else -> focusAccent ?: MaterialTheme.colorScheme.onSurface
+    }
 
     Column(
-        modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier
+            .padding(horizontal = 24.dp, vertical = 4.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant,
+                shape = RoundedCornerShape(24.dp),
+            )
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Top,
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = breadcrumb,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = bigTitle,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = bigTitleColor,
+                )
+            }
             IconButton(onClick = onOpenSettings) {
                 Icon(
                     imageVector = Icons.Outlined.Settings,
@@ -570,51 +798,20 @@ private fun TodayBlock(
             }
         }
 
-        when {
-            !anySplitSet -> {
-                Text(
-                    text = "Build your week",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = "Tell the coach what you train each day. You can leave days blank for rest.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                PillCta(
-                    label = "Set up your week",
-                    onClick = onOpenSettings,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
-            focus.isBlank() -> {
-                Text(
-                    text = "Rest day",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                DayPickerWithTodayDot(
-                    selectedDay = selectedDay,
-                    todayDayOfWeek = todayDayOfWeek,
-                    onDayChange = onDayChange,
-                    split = split,
-                )
-            }
-            else -> {
-                val accent = com.example.fitness_tracker.ui.theme.focusKeywordColor(focus)
-                Text(
-                    text = focus,
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = accent ?: MaterialTheme.colorScheme.onSurface,
-                )
-                DayPickerWithTodayDot(
-                    selectedDay = selectedDay,
-                    todayDayOfWeek = todayDayOfWeek,
-                    onDayChange = onDayChange,
-                    split = split,
-                )
-            }
+        if (anySplitSet) {
+            DayPillRow(
+                selectedDay = selectedDay,
+                todayDayOfWeek = todayDayOfWeek,
+                onDayChange = onDayChange,
+                split = split,
+            )
+        } else {
+            Text(
+                text = "Tell the coach what you train each day. You can leave days blank for rest.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            PillCta(label = "Set up your week", onClick = onOpenSettings)
         }
     }
     Box(modifier = Modifier.padding(top = 12.dp))
