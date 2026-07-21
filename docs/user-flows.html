@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Vector — Interactive User Flows</title>
+<script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+<style>
+  :root{
+    --brand:#5B3FFF; --brand-dim:#9B89FF;
+    --bg:#0d0d10; --panel:#161620; --panel2:#1e1e2a; --line:#2c2c3a;
+    --ink:#e8e8ef; --muted:#9aa0b0;
+  }
+  html.light{
+    --bg:#f4f4f7; --panel:#ffffff; --panel2:#f0f0f5; --line:#dcdce4;
+    --ink:#1a1a22; --muted:#5a6070;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+       background:var(--bg);color:var(--ink);display:flex;overflow:hidden}
+  aside{width:248px;flex:0 0 248px;background:var(--panel);border-right:1px solid var(--line);
+        display:flex;flex-direction:column;height:100%}
+  .brand{padding:16px 18px;border-bottom:1px solid var(--line)}
+  .brand b{color:var(--brand-dim);font-size:16px;letter-spacing:.5px}
+  .brand span{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+  nav{padding:6px;overflow:auto;flex:1}
+  nav button{display:block;width:100%;text-align:left;background:none;border:0;color:var(--ink);
+    padding:8px 12px;border-radius:9px;cursor:pointer;font-size:13px;margin-bottom:1px}
+  nav button:hover{background:var(--panel2)}
+  nav button.on{background:var(--brand);color:#fff;font-weight:600}
+  nav .grp{color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.8px;
+    padding:12px 12px 4px;font-weight:600}
+  .legend{padding:10px 14px;border-top:1px solid var(--line);font-size:11px;color:var(--muted)}
+  .legend .row{display:flex;align-items:center;gap:7px;margin:4px 0}
+  .swatch{width:12px;height:12px;border-radius:3px;flex:0 0 12px}
+  main{flex:1;display:flex;flex-direction:column;height:100%;min-width:0}
+  .bar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--line);
+       background:var(--panel)}
+  .bar h1{font-size:15px;margin:0;flex:0 0 auto}
+  .bar .sub{color:var(--muted);font-size:12px;margin-left:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .spacer{flex:1}
+  .bar input{background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+    border-radius:8px;padding:7px 10px;font-size:13px;width:170px}
+  .bar button{background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+    border-radius:8px;padding:7px 11px;cursor:pointer;font-size:13px;min-width:34px}
+  .bar button:hover{border-color:var(--brand-dim)}
+  #canvas{flex:1;position:relative;overflow:hidden}
+  .mermaid{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+  .mermaid svg{width:100%;height:100%}
+  .node.hit rect,.node.hit polygon,.node.hit circle,.node.hit path{
+    stroke:#ffd166 !important;stroke-width:4px !important;filter:drop-shadow(0 0 6px #ffd166)}
+  .hint{position:absolute;left:14px;bottom:12px;color:var(--muted);font-size:11.5px;
+    background:var(--panel);border:1px solid var(--line);padding:6px 10px;border-radius:8px;opacity:.9}
+</style>
+</head>
+<body>
+<aside>
+  <div class="brand"><b>VECTOR</b><span>End-to-end user flows</span></div>
+  <nav id="nav"></nav>
+  <div class="legend">
+    <div class="row"><span class="swatch" style="background:#5B3FFF"></span>Screen / entry</div>
+    <div class="row"><span class="swatch" style="background:#0EA5A0"></span>Decision</div>
+    <div class="row"><span class="swatch" style="background:#E89B3D"></span>Sheet / dialog</div>
+    <div class="row"><span class="swatch" style="background:#9B89FF"></span>AI action</div>
+    <div class="row"><span class="swatch" style="background:#4A6FA5"></span>Navigation target</div>
+    <div class="row"><span class="swatch" style="background:#40404e"></span>User action</div>
+  </div>
+</aside>
+<main>
+  <div class="bar">
+    <h1 id="title">Overview</h1><span class="sub" id="sub"></span>
+    <div class="spacer"></div>
+    <input id="search" placeholder="Highlight nodes…" />
+    <button id="zout" title="Zoom out">−</button>
+    <button id="zin" title="Zoom in">+</button>
+    <button id="fit">Fit</button>
+    <button id="theme">Light</button>
+  </div>
+  <div id="canvas">
+    <div class="mermaid" id="diagram"></div>
+    <div class="hint">scroll = zoom · drag = pan · +/− buttons · Fit resets</div>
+  </div>
+</main>
+
+<script type="module">
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+
+const CD = `
+  classDef screen fill:#5B3FFF,color:#fff,stroke:#3a28b3,stroke-width:1px;
+  classDef decision fill:#0EA5A0,color:#fff,stroke:#0b7a76;
+  classDef sheet fill:#E89B3D,color:#111,stroke:#b6741f;
+  classDef ai fill:#9B89FF,color:#111,stroke:#6b57d6;
+  classDef nav fill:#4A6FA5,color:#fff,stroke:#31517d;
+  classDef action fill:#40404e,color:#eee,stroke:#5a5a6e;
+`;
+
+// Small, single-purpose sub-flows — each fits the screen and stays legible.
+const diagrams = {
+overview:{title:"Overview",sub:"launch gate → tabs → cross-screen handoffs",code:`flowchart LR
+  L(["App launch"]):::screen --> G{"profile == null?"}:::decision
+  G -- yes --> W["Welcome<br/>name + email"]:::screen --> WS[/"save profile"/]:::sheet --> G2
+  G -- no --> G2{"onboarding<br/>complete?"}:::decision
+  G2 -- no --> OB["Onboarding<br/>3 steps"]:::screen --> APP
+  G2 -- yes --> APP(["Home"]):::screen
+  APP --> HOME(["Home"]):::nav
+  APP --> PLAN(["Plan"]):::nav
+  APP --> LOG(["Log"]):::nav
+  APP --> DIET(["Diet"]):::nav
+  APP --> STATS(["Stats"]):::nav
+  HOME -->|avatar| PROF(["Profile"]):::nav
+  HOME -->|"hero CTA"| LOG
+  HOME -->|"Plan with AI"| PLAN
+  PLAN -->|"Use this plan"| LOG
+  DIET -->|"shared day plan"| HOME
+  PROF -->|"split / reminder"| PLAN
+${CD}`},
+
+onboarding:{title:"Onboarding",sub:"3 steps, each skippable",code:`flowchart TD
+  S1["Step 1 · Weekly split"]:::screen --> P1{"preset or custom?"}:::decision
+  P1 -- preset --> PP["PPL / Bro / Upper-Lower / Full-body"]:::action
+  P1 -- custom --> CB["build 7-day focus"]:::action
+  PP --> SV1[/"saveWeeklySplit"/]:::sheet
+  CB --> SV1
+  S1 -. skip .-> S2
+  SV1 --> S2["Step 2 · Weight goal"]:::screen
+  S2 --> CW["current kg · required"]:::action --> TW["target kg · optional"]:::action --> CG["daily kcal · optional"]:::action --> SV2[/"saveBodyWeight + saveCalorieGoal"/]:::sheet
+  S2 -. skip .-> S3
+  SV2 --> S3["Step 3 · Diet type"]:::screen
+  S3 --> DT{"Veg / Non-veg / Vegan / Eggetarian"}:::decision --> SV3[/"setDietPreference"/]:::sheet
+  S3 -. skip .-> FIN
+  SV3 --> FIN["Finish → markComplete"]:::action --> APP(["Home"]):::nav
+${CD}`},
+
+// ---- End-to-end scenarios (cross-screen journeys) ----
+sc_gym_planned:{title:"At the gym · planned workout",sub:"existing user, plan already queued for today",code:`flowchart TD
+  subgraph H["HOME"]
+    O["Open app at the gym"]:::action --> HS{"Hero CTA state"}:::decision
+    HS -- "plan queued" --> SP["Start planned workout"]:::action
+    HS -- "session already open" --> CS["Continue session"]:::action
+  end
+  subgraph L["LOG"]
+    SESS(["Session view · auto-opens"]):::screen --> SET["Log set"]:::action --> RT["rest timer 90s"]:::action
+    RT --> MORE{"more sets?"}:::decision
+    MORE -- "yes / repeat last" --> SET
+    MORE -- no --> END["End session"]:::action
+    END --> SAVE[/"Save template?"/]:::sheet --> CRIT[/"AI critique"/]:::ai
+    SET -. "hit PR" .-> PR["gold badge + haptic"]:::action --> RT
+  end
+  SP --> SESS
+  CS --> SESS
+  CRIT --> DONE(["Done · streak + week dot fills"]):::nav
+${CD}`},
+
+sc_gym_generate:{title:"At the gym · no plan yet",sub:"generate a workout on the spot, then log it",code:`flowchart TD
+  subgraph H["HOME"]
+    O["Open app · nothing queued"]:::action --> AI["Plan today with AI"]:::ai
+  end
+  subgraph P["PLAN"]
+    IN["Pick goal · duration · equipment · notes"]:::action --> GEN["Generate plan"]:::ai --> R["Review plan"]:::action --> OK{"good?"}:::decision
+    OK -- no --> RG["Regenerate"]:::ai --> R
+    OK -- yes --> USE["Use this plan"]:::action
+  end
+  subgraph L["LOG"]
+    SESS(["Session view"]):::screen --> LG["Log sets → End → AI critique"]:::action
+  end
+  AI --> IN
+  USE --> SESS
+  LG --> DONE(["Done"]):::nav
+${CD}`},
+
+sc_first_run:{title:"Brand-new user · first workout",sub:"install → onboarding → first logged session",code:`flowchart TD
+  subgraph G["FIRST LAUNCH"]
+    L["Install & open"]:::action --> W["Welcome · name + email"]:::screen
+  end
+  subgraph OB["ONBOARDING"]
+    S1["Step 1 · pick split preset"]:::action --> S2["Step 2 · weight goal"]:::action --> S3["Step 3 · diet type"]:::action
+  end
+  subgraph H["HOME"]
+    HM(["Home · empty state"]):::screen --> SW["Start workout"]:::action
+  end
+  subgraph LO["LOG"]
+    GR["Muscle grid → select groups → Start"]:::action --> LG["Log sets → End"]:::action
+  end
+  W --> S1
+  S3 --> HM
+  SW --> GR
+  LG --> DONE(["First session logged"]):::nav
+${CD}`},
+
+sc_log_meal:{title:"After eating · log food",sub:"quick-add from Home with over-goal guard",code:`flowchart TD
+  subgraph H["HOME"]
+    O["After a meal · open app"]:::action --> FT["Tap Food tile"]:::action --> FQS[/"Quick-add sheet"/]:::sheet --> WAY{"how to enter?"}:::decision
+    WAY -- "planned pill" --> PILL["tap suggestion"]:::ai --> G
+    WAY -- "known food" --> AC["autocomplete"]:::action --> G
+    WAY -- "new food" --> ASK["Ask AI · estimate macros"]:::ai --> G
+    G{"over calorie goal?"}:::decision -- yes --> C[/"confirm · Add anyway"/]:::sheet --> LOGGED
+    G -- no --> LOGGED["logged · totals update"]:::action
+  end
+  FT -. "long-press / Full diet log" .-> DIET(["Diet · browse + AI day plan"]):::nav
+${CD}`},
+
+sc_plan_week:{title:"At home · plan the week",sub:"set split + reminder, notification next day",code:`flowchart TD
+  subgraph P["PLAN · settings"]
+    O["Open Plan → settings"]:::action --> SE[/"Split editor · set 7 days"/]:::sheet --> SV["Save split"]:::action
+    O --> RS[/"Reminder · time + toggle on"/]:::sheet --> SR["Save → alarm scheduled"]:::action
+  end
+  subgraph SYS["NEXT DAY"]
+    N["Notification · Today: focus"]:::action --> OPEN(["Tap → opens app"]):::nav
+  end
+  SV --> N
+  SR --> N
+${CD}`},
+
+sc_morning:{title:"Morning check-in · no workout",sub:"log body metrics, glance progress",code:`flowchart LR
+  subgraph H["HOME · morning"]
+    O["Open app"]:::action --> WT["Weight tile · log kg"]:::action --> WA["Water · +1 glass"]:::action --> DOTS["glance streak + week dots"]:::action
+  end
+  DOTS -->|"tap dots"| ST(["Stats"]):::nav
+${CD}`},
+
+sc_review:{title:"Weekly progress review",sub:"check PRs and 1RM trend",code:`flowchart LR
+  subgraph S["STATS"]
+    O["Open Stats"]:::action --> WIN["Window · 30d"]:::action --> SCAN["scan PRs + muscle balance"]:::action --> PICK["pick exercise"]:::action --> CHART["1RM trend + delta"]:::action
+  end
+${CD}`},
+
+sc_restore:{title:"New phone · restore data",sub:"bring everything back from a JSON backup",code:`flowchart TD
+  subgraph P["PROFILE · Data"]
+    O["Open Profile → Data"]:::action --> R["Restore from backup"]:::action --> SAF[/"pick JSON file"/]:::sheet --> C[/"destructive confirm"/]:::sheet --> SCH{"backup schema newer?"}:::decision
+    SCH -- yes --> BAIL["bail · update app first"]:::action
+    SCH -- no --> OK(["wipe + reinsert · all data back"]):::nav
+  end
+${CD}`},
+
+home_hero:{title:"Home · Start CTA",sub:"one button, 4 states — all lead to Log",code:`flowchart LR
+  H(["Home"]):::screen --> HERO{"Hero CTA state"}:::decision
+  HERO -- "session open" --> C1["Continue session"]:::action --> LOG(["Log"]):::nav
+  HERO -- "planned &gt; 0" --> C2["Start planned workout"]:::action --> LOG
+  HERO -- "sets &gt; 0" --> C3["Resume workout"]:::action --> LOG
+  HERO -- "idle" --> C4["Start workout"]:::action --> LOG
+  HERO -. "fully idle only" .-> AI["Plan today with AI"]:::ai --> PLAN(["Plan"]):::nav
+${CD}`},
+
+home_tiles:{title:"Home · Daily tiles",sub:"weight / food / water — mixed tap vs long-press",code:`flowchart LR
+  T["Daily tiles"]:::action --> WT["Weight"]:::action -->|tap| BWS[/"BodyWeightSheet"/]:::sheet
+  T --> FT["Food"]:::action
+  FT -->|tap| FQS[/"FoodQuickAddSheet"/]:::sheet
+  FT -->|"long-press"| DIET(["Diet"]):::nav
+  T --> WA["Water"]:::action
+  WA -->|tap| WU["+1 glass"]:::action
+  WA -->|"long-press"| WD["-1 glass"]:::action
+  H(["Home"]):::screen --> T
+  H -->|bell| RS[/"ReminderSettingsSheet"/]:::sheet
+  H -->|avatar| PR(["Profile"]):::nav
+  H -->|"week dots"| ST(["Stats"]):::nav
+${CD}`},
+
+home_food:{title:"Home · Food quick-add",sub:"log food with over-goal guard",code:`flowchart TD
+  FQS[/"FoodQuickAddSheet"/]:::sheet --> SUG["tap suggestion pill · AI day plan"]:::ai --> GUARD
+  FQS --> AC["name autocomplete · menu+plan+logs"]:::action --> MAN
+  FQS --> ASK["Ask AI · estimate macros"]:::ai --> MAN
+  FQS --> MAN["manual kcal / protein"]:::action --> ADD["Add"]:::action --> GUARD{"over calorie goal?"}:::decision
+  GUARD -- yes --> CONF[/"confirm · Add anyway?"/]:::sheet
+  GUARD -- no --> LOGGED["logged today · tap X to remove"]:::action
+  CONF -- "add anyway" --> LOGGED
+  CONF -- cancel --> FQS
+  FQS -->|"Full diet log"| DIET(["Diet"]):::nav
+${CD}`},
+
+plan_gen:{title:"Plan · Generate",sub:"inputs → Gemini → use-plan handoff",code:`flowchart TD
+  P(["Plan"]):::screen --> SQ{"weekly split set?"}:::decision
+  SQ -- no --> BUILD["Set up your week"]:::action
+  SQ -- yes --> DAY["Day picker · 7-day strip"]:::action --> FQ{"focus for day?"}:::decision
+  FQ -- rest --> REST["Rest day"]:::action
+  FQ -- set --> IN["Inputs · goal · duration · equipment · notes"]:::action
+  IN --> GEN["Generate plan"]:::ai --> AICALL[/"Gemini 2.5 Flash<br/>+history +weight +nutrition"/]:::ai --> ST{"result"}:::decision
+  ST -- error --> ERR["friendly error"]:::action --> GEN
+  ST -- success --> RESULT["Parsed plan<br/>Warm-up / Main / Cool-down"]:::action
+  RESULT --> REGEN["Regenerate"]:::ai --> GEN
+  RESULT --> USE["Use this plan"]:::action --> STAGE[/"stage pending_plan<br/>+ open session flag"/]:::sheet --> LOG(["Log · session view"]):::nav
+${CD}`},
+
+plan_settings:{title:"Plan · Split & reminder",sub:"settings menu sheets",code:`flowchart LR
+  P(["Plan"]):::screen -->|"settings icon"| MENU[/"PlanSettingsMenuSheet"/]:::sheet
+  MENU --> SE[/"SplitEditorSheet · 7 FocusPickers"/]:::sheet --> SV[/"saveWeeklySplit"/]:::sheet
+  MENU --> RS[/"ReminderSettingsSheet · time + toggle"/]:::sheet --> SR[/"saveReminder → alarm"/]:::sheet
+${CD}`},
+
+log_start:{title:"Log · Start paths",sub:"3 ways into a session",code:`flowchart LR
+  L(["Log"]):::screen --> E{"how opened?"}:::decision
+  E -- "from plan" --> A["open-session flag → session view"]:::action --> S(["In-session view"]):::screen
+  E -- "resume under 4h" --> R["load open session"]:::action --> S
+  E -- manual --> G["Muscle grid · 6 cards + Back"]:::action --> SEL["select groups"]:::action --> START["Start workout (N)"]:::action --> S
+${CD}`},
+
+log_set:{title:"Log · Log a set",sub:"set sheet → kind-specific fields",code:`flowchart TD
+  S(["In-session view"]):::screen --> LS["Log set"]:::action --> SHEET[/"SetSheet"/]:::sheet
+  SHEET --> PICK["exercise picker · browse / create / edit"]:::action --> HINT["Last: X reps · Y kg hint"]:::action --> K{"exercise kind"}:::decision
+  K -- reps --> RF["reps + weight"]:::action --> SUB
+  K -- time --> TF["min + sec"]:::action --> SUB
+  K -- distance --> DF["distance"]:::action --> SUB
+  SUB["submit"]:::action --> ROW["set row added"]:::action
+  S -->|"tap row"| EDIT["edit set"]:::action --> SHEET
+  S -->|"long-press row"| DEL["delete · undo snackbar"]:::action
+${CD}`},
+
+log_after:{title:"Log · PR / rest / repeat",sub:"post-submit feedback",code:`flowchart LR
+  ROW["set row added"]:::action --> PR{"all-time PR?"}:::decision
+  PR -- yes --> CEL["gold badge + haptic + overlay"]:::action --> RT["rest timer 90s · ring + Skip"]:::action
+  PR -- no --> RT
+  REP["Repeat last pill"]:::action --> RT
+${CD}`},
+
+log_end:{title:"Log · End session",sub:"discard vs save + AI critique",code:`flowchart LR
+  S(["In-session view"]):::screen --> END["End session"]:::action --> Q{"sets logged?"}:::decision
+  Q -- no --> DISC["silent discard"]:::action
+  Q -- yes --> TMPL[/"SaveTemplateDialog"/]:::sheet --> CRIT[/"AI CritiqueSheet"/]:::ai
+${CD}`},
+
+diet_browse:{title:"Diet · Browse & log",sub:"filter, cards, add to today",code:`flowchart TD
+  D(["Diet"]):::screen --> CH["Diet-type chips · filter"]:::action --> VIS{"visible meals<br/>Vegan=vegan only · Non-veg=all"}:::decision
+  D --> SR["Search pill"]:::action
+  D --> CAT["Category rows · B / L / D / Snack / High-protein"]:::action --> CARD["Meal card"]:::action -->|tap| MDS[/"MealDetailSheet · macros + ingredients + steps"/]:::sheet
+  MDS --> ADD["Add to today"]:::action --> TOT["today's totals · X / Y kcal"]:::action
+  MDS --> RM["Remove · AI meals, undo"]:::action
+  CAT --> SM["Suggest more · AI 3 per category"]:::ai --> CARD
+  D --> COG["calorie-goal cog"]:::action --> CGS[/"CalorieGoalSheet"/]:::sheet
+${CD}`},
+
+diet_ai:{title:"Diet · AI day plan",sub:"5 meals, calorie-budgeted, shared to Home",code:`flowchart TD
+  D(["Diet"]):::screen --> FAB["Suggest meals FAB"]:::ai --> DP[/"suggestDayPlan → 5 meals<br/>±100 kcal · goal + training tuned"/]:::ai
+  DP --> PILLS["day-plan pills"]:::action -->|tap| PMDS[/"PlannedMealDetailSheet · read-only"/]:::sheet
+  DP --> PERSIST["persist per-day"]:::action --> HOME(["Home · quick-add pills"]):::nav
+${CD}`},
+
+stats:{title:"Stats",sub:"window-driven aggregates · read-only",code:`flowchart TD
+  S(["Stats"]):::screen --> WIN["Window chips · 7 / 14 / 30 / 90 / All"]:::action --> AGG{"recompute"}:::decision
+  AGG --> BIG["Streak · Sessions · Sets"]:::action
+  AGG --> VOL["Volume · kg / time / distance"]:::action
+  AGG --> MB["Muscle balance bar"]:::action
+  AGG --> PRS["Personal records · 1RM"]:::action
+  AGG --> CH["1RM progress chart"]:::action --> EX["pick exercise → line + delta"]:::action
+  AGG --> WK["Weekly bars · 7-day"]:::action
+  AGG --> SL["Sessions list"]:::action
+${CD}`},
+
+profile:{title:"Profile & Settings",sub:"identity, theme, deep-links",code:`flowchart TD
+  PR(["Profile"]):::screen --> ED["Edit name / email"]:::action --> EDD[/"EditProfileDialog"/]:::sheet
+  PR --> CL["Clear profile"]:::action --> CC[/"confirm · workouts kept"/]:::sheet
+  PR --> SC["Today's totals card"]:::action
+  PR --> WS["Weekly split row"]:::action -->|nav| PA(["Plan + split editor"]):::nav
+  PR --> WR["Daily reminder row"]:::action -->|nav| PB(["Plan + reminder sheet"]):::nav
+  PR --> TH["Theme row"]:::action --> TP[/"ThemePicker · System / Light / Dark"/]:::sheet
+${CD}`},
+
+backup:{title:"Data · Backup & restore",sub:"SAF export / atomic restore",code:`flowchart TD
+  PR(["Profile · Data"]):::screen --> EXP["Export data"]:::action --> S1[/"SAF save → JSON · 21 tables + schemaVersion"/]:::sheet
+  PR --> RES["Restore from backup"]:::action --> S2[/"SAF pick"/]:::sheet --> RC[/"destructive confirm"/]:::sheet --> SCH{"schema &gt; current?"}:::decision
+  SCH -- yes --> BAIL["friendly bail · update app"]:::action
+  SCH -- no --> WIPE["wipe + reinsert · atomic transaction"]:::action
+${CD}`},
+};
+
+const order = [
+  ["Map","overview"],["Map","onboarding"],
+  ["Scenarios","sc_gym_planned"],["Scenarios","sc_gym_generate"],["Scenarios","sc_first_run"],
+  ["Scenarios","sc_log_meal"],["Scenarios","sc_plan_week"],["Scenarios","sc_morning"],
+  ["Scenarios","sc_review"],["Scenarios","sc_restore"],
+  ["Home","home_hero"],["Home","home_tiles"],["Home","home_food"],
+  ["Plan","plan_gen"],["Plan","plan_settings"],
+  ["Log","log_start"],["Log","log_set"],["Log","log_after"],["Log","log_end"],
+  ["Diet","diet_browse"],["Diet","diet_ai"],
+  ["Stats","stats"],
+  ["Profile","profile"],["Profile","backup"],
+];
+
+const nav=document.getElementById('nav'); let lastGrp=null;
+for(const [grp,key] of order){
+  if(grp!==lastGrp){const g=document.createElement('div');g.className='grp';g.textContent=grp;nav.appendChild(g);lastGrp=grp;}
+  const b=document.createElement('button');b.textContent=diagrams[key].title;b.dataset.key=key;
+  b.onclick=()=>select(key);nav.appendChild(b);
+}
+
+let isDark=true, pz=null, active='overview';
+function initMermaid(){
+  mermaid.initialize({startOnLoad:false,securityLevel:'loose',
+    theme:isDark?'dark':'default',
+    flowchart:{htmlLabels:true,curve:'basis',nodeSpacing:55,rankSpacing:65,padding:12},
+    themeVariables:{fontSize:'17px'}});
+}
+initMermaid();
+
+async function render(key){
+  const el=document.getElementById('diagram');
+  el.removeAttribute('data-processed'); el.innerHTML=''; el.textContent=diagrams[key].code;
+  await mermaid.run({nodes:[el]});
+  const svg=el.querySelector('svg');
+  if(svg){
+    svg.style.maxWidth='none'; svg.style.width='100%'; svg.style.height='100%';
+    if(pz){try{pz.destroy()}catch(e){}}
+    pz=svgPanZoom(svg,{controlIconsEnabled:false,fit:true,center:true,minZoom:0.3,maxZoom:15,zoomScaleSensitivity:.4});
+    // don't let small diagrams blow up past 1x — keeps text at authored size
+    if(pz.getZoom()>1){pz.zoom(1);pz.center();}
+  }
+  applySearch();
+}
+function select(key){
+  active=key;
+  document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.key===key));
+  document.getElementById('title').textContent=diagrams[key].title;
+  document.getElementById('sub').textContent='— '+diagrams[key].sub;
+  render(key);
+}
+function applySearch(){
+  const q=document.getElementById('search').value.trim().toLowerCase();
+  document.querySelectorAll('#diagram .node').forEach(n=>{
+    n.classList.toggle('hit', !!(q && (n.textContent||'').toLowerCase().includes(q)));
+  });
+}
+document.getElementById('search').addEventListener('input',applySearch);
+document.getElementById('fit').onclick=()=>{if(pz){pz.resize();pz.fit();pz.center();if(pz.getZoom()>1){pz.zoom(1);pz.center();}}};
+document.getElementById('zin').onclick=()=>{if(pz)pz.zoomBy(1.3)};
+document.getElementById('zout').onclick=()=>{if(pz)pz.zoomBy(1/1.3)};
+document.getElementById('theme').onclick=(e)=>{
+  isDark=!isDark; document.documentElement.classList.toggle('light',!isDark);
+  e.target.textContent=isDark?'Light':'Dark'; initMermaid(); render(active);
+};
+select('overview');
+</script>
+</body>
+</html>
