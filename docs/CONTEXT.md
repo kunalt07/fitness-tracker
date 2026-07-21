@@ -3,7 +3,7 @@
 ## Project basics
 - **Path**: `/Users/kunaltigga/AndroidStudioProjects/FitnessTracker`
 - **Repo**: `https://github.com/kunalt07/fitness-tracker` (public)
-- **Last commit on `main`**: `46edab2` — "Docs: refresh CONTEXT to current main" (working tree clean, pushed to `origin/main`; see Recent commit history below)
+- **Last commit on `main`**: `e02a9aa` — "Onboarding: multi-select focuses per day" (working tree clean, pushed to `origin/main`; see Recent commit history below)
 - **Docs live in `docs/`**: `CONTEXT.md` (this — current state), `ROADMAP.md` (queue/done/won't-do), `PLAN.md` (shipped feature map), `DECISIONS.md` (why-log). Plan in VS Code / Claude Code; implement in Android Studio (same repo, shared files).
 - **History rewritten**: `Co-Authored-By: Claude` trailer scrubbed from all 12 commits via `git filter-branch` + force-push. SHAs changed. Safety net at `refs/original/refs/heads/main` (local only). Do NOT re-add the trailer on future commits — user does not want Claude as contributor.
 - **App name**: Vector (was Fitness Tracker)
@@ -103,7 +103,21 @@
 ## Feature backlog
 See `ROADMAP.md` for the live queue / done / won't-do. As of `ef4106a` the "Now" section holds the next planned item; ask the user before starting if unsure.
 
+## Session 2026-07-22 highlights (nav / workout picker / theme)
+- **Nav bar** (`FitnessApp.kt`): icons-only, selection is a sliding rounded-rect **outline** (no filled pill), no-bounce spring slide, selected icon springs 1.2x (tap-pop). Log icon = custom `res/drawable/ic_exercise.xml` (Material Symbols "exercise"), Diet = `ic_menu_book.xml` ("menu_book_2"), both via `painterResource` in `NavPill` (see the `customIcon` when-map). Re-tapping the active tab now always navigates → Home returns to its root from Profile.
+- **Plan duration** (`PlanScreen.kt`): preset chips + a `+` pill → **"Add duration"** dialog with a from-scratch slot-machine `WheelPicker` (HH:MM:SS snapping `LazyColumn` drums, center accent band, theme colors). Stores whole minutes (sec≥30 rounds up).
+- **Plan header**: `TodayBlock` is an outlined card — breadcrumb (`Today › Day`) + big focus title + gear, then Monday-first pill row (`MON_FIRST_DAYS`/`LABELS`, M T W Th F S S) via `DayPillRow`/`DayPill`, keeps muscle dots + today mark, selected pill ringed.
+- **Workout page** (`LogScreen.kt` + `ExerciseCatalog.kt`): tapping a muscle card opens a **searchable per-group picker**. Default view = **Recommended** staples (split With-equipment / Bodyweight); search box filters the full curated `EXERCISE_CATALOG` (7 groups, ~20-30 each); no-match → Add "X"; custom DB exercises merge in. Picks accumulate per group as NAMES in `chosenByGroup`; **Start** → `LogViewModel.startWorkoutByNames` resolves→creates→queues. "Add" disabled until ≥1 pick. `FitnessRepository.isBodyweight()` + expanded bodyweight seed.
+- **Profile theme** (`ProfileScreen.kt`): `ThemeToggleRow` — sliding sun/moon toggle (sun=light, moon=dark), replaced the 3-radio dialog. **System default dropped** (binary now).
+- **Onboarding** (`OnboardingFlow.kt`): custom "Build your week" step now uses the shared multi-select `ChipPicker` (made `internal` in `PlanScreen.kt`) — multiple focuses per day as removable pills.
+
 ## Recent commit history (all on main; SHAs post-scrub)
+- `e02a9aa` — Onboarding: multi-select focuses per day in "Build your week"
+- `3fc0a77` — Docs: add nav/plan reference screenshots + source SVG icons
+- `6b35586` — Profile: sliding sun/moon theme toggle, replacing the picker dialog
+- `0dd9d72` — Workout page: per-group exercise picker with search + recommended catalog
+- `43df7c5` — Plan: custom-duration wheel picker + reworked day/focus header card
+- `f472c08` — Nav bar: icons-only with outline selection, custom icons, tap-pop, smooth slide
 - `46edab2` — Docs: refresh CONTEXT to current main (Log/Plan/Onboarding overhaul, build bump)
 - `ef4106a` — Docs: add user-flows walkthrough (USER_FLOWS.md + HTML + screenshot)
 - `3b7c9d2` — Build: bump AGP 9.3.0, KSP 2.3.2, Gradle wrapper 9.5.0
@@ -144,7 +158,8 @@ See `ROADMAP.md` for the live queue / done / won't-do. As of `ef4106a` the "Now"
 - Floating dock has no card chrome — controls float over scroll content. Quick log pencil icon may be hard to read against busy content (no individual backdrop).
 
 ## Session-resume cues
-- Working tree clean at `46edab2`, pushed to `origin/main`. Recent focus: Log multi-select workout page + session-view split, Plan structured render, onboarding custom split, Diet menu search. For next direction, read `ROADMAP.md` "Now" (still queues `swapMeal`).
+- Working tree clean at `e02a9aa`, pushed to `origin/main`. Recent focus: nav-bar redesign, Plan duration wheel picker + header card, workout-page exercise picker w/ searchable catalog, sun/moon theme toggle, onboarding multi-select. For next direction, read `ROADMAP.md` "Now" (still queues `swapMeal`).
+- **Device is on the RELEASE build now** (`2B121JEGR01006`), not debug — installed to test smoothness (debug felt laggy; release smooth, as always). Debug data was wiped once switching debug→release. Reinstalling debug will require another uninstall (wipe). Stay on release or `install -r` release-over-release to preserve data.
 - **Verify smoothness on RELEASE builds** — debug Compose is janky (proven repeatedly this project); nav/animation lag in debug is expected, gone in release. adb: `$HOME/Library/Android/sdk/platform-tools/adb`; device `2B121JEGR01006`. Release sig ≠ debug → uninstall before installing release (wipes data).
 - Keystore + password are critical — flag for off-machine backup if user asks about distribution.
 - User tends to ask for "blur"/"glass" — be honest real blur needs Haze; frame the tradeoff cleanly.
